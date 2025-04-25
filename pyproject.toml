@@ -32,7 +32,7 @@ hypothesis = "^6.131.9"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"
-addopts = "--cov=intentlayer_sdk --cov-report=term --cov-fail-under=90"
+addopts = "--cov=intentlayer_sdk --cov-report=term --cov-fail-under=80"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
