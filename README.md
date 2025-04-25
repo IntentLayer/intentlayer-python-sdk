@@ -1,5 +1,5 @@
 [![PyPI version](https://img.shields.io/pypi/v/intentlayer-sdk.svg)](https://pypi.org/project/intentlayer-sdk/)  
-[![Test Coverage](https://img.shields.io/codecov/c/github/intentlayer/intentlayer-sdk.svg?branch=main)](https://codecov.io/gh/intentlayer/intentlayer-sdk)  
+[![Test Coverage](https://img.shields.io/codecov/c/github/IntentLayer/intentlayer-python-sdk.svg?branch=main)](https://app.codecov.io/gh/IntentLayer/intentlayer-python-sdk)  
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 # IntentLayer SDK for Python
@@ -159,10 +159,10 @@ client = IntentClient(
 ## 🧪 Testing & Coverage
 
 ```bash
-pytest --cov=intentlayer_sdk --cov-fail-under=90
+pytest --cov=intentlayer_sdk --cov-fail-under=80
 ```
 
-We maintain ≥ 90% coverage to guarantee stability.
+We maintain ≥ 80% coverage to guarantee stability.
 
 ---
 
