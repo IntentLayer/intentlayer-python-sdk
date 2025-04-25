@@ -1,5 +1,7 @@
 codecov:
   require_ci_to_pass: yes
+  notify:
+    wait_for_ci: yes
 
 coverage:
   precision: 2
@@ -16,4 +18,4 @@ coverage:
         target: 90%
         threshold: 1%
 
-comment: false
+comment: true
