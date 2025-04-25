@@ -15,8 +15,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import requests
 import base58
 
-from intentlayer_sdk.utils import sha256_hex, create_envelope
-from intentlayer_sdk.models import CallEnvelope
+from intentlayer_sdk.utils import sha256_hex
+from intentlayer_sdk.envelope import create_envelope, CallEnvelope
 
 # Constants for testing
 TEST_RPC_URL = "https://rpc.example.com"

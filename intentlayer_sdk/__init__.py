@@ -3,36 +3,49 @@ IntentLayer SDK - Python client for the IntentLayer protocol.
 """
 import warnings
 from .client import IntentClient
-from .models import TxReceipt, CallEnvelope
-from .exceptions import IntentLayerError, PinningError, TransactionError, EnvelopeError
+from .models import TxReceipt
+from .envelope import CallEnvelope, create_envelope
+from .exceptions import (
+    IntentLayerError, PinningError, TransactionError, 
+    EnvelopeError, NetworkError, AlreadyRegisteredError, InactiveDIDError
+)
+from .config import NetworkConfig, NETWORKS
+from .signer import Signer
+from .signer.local import LocalSigner
 
 # Import version
 from .version import __version__
 
-# Backward compatibility layer - will be removed in v1.0.0
-class IntentLayerClient(IntentClient):
-    """
-    Backward compatibility class. Please use IntentClient instead.
-    
-    This alias will be removed in version 1.0.0.
-    """
-    def __init__(self, *args, **kwargs):
-        warnings.warn(
-            "IntentLayerClient is deprecated and will be removed in version 1.0.0. "
-            "Please use IntentClient instead.", 
-            DeprecationWarning, 
-            stacklevel=2
-        )
-        super().__init__(*args, **kwargs)
+# No backward compatibility layer - using clean API from the start
 
 __all__ = [
+    # Main client
     "IntentClient",
-    "IntentLayerClient",  # Deprecated
+    
+    # Models
     "TxReceipt", 
     "CallEnvelope",
+    
+    # Envelope utilities
+    "create_envelope",
+    
+    # Network configuration
+    "NetworkConfig",
+    "NETWORKS",
+    
+    # Signers
+    "Signer",
+    "LocalSigner",
+    
+    # Exceptions
     "IntentLayerError",
     "PinningError",
     "TransactionError",
     "EnvelopeError",
+    "NetworkError",
+    "AlreadyRegisteredError",
+    "InactiveDIDError",
+    
+    # Version
     "__version__"
 ]

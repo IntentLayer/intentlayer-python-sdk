@@ -1,0 +1,18 @@
+{
+  "zksync-era-sepolia": {
+    "chainId": 300,
+    "rpc": "https://sepolia.era.zksync.dev",
+    "intentRecorder": "0x21622b5b79C37F2eC6a1705472b584041165b5E9",
+    "didRegistry": "0x20846c77DeCbc7342716D39Dc6F9bBC08E3560b7",
+    "deployer": "0x841B4ab8B8fec2737e3860B49664add0724311bd",
+    "blockDeployed": 5062168
+  },
+  "local": {
+    "chainId": 9999,
+    "rpc": "http://localhost:8545",
+    "intentRecorder": "0x0000000000000000000000000000000000000000",
+    "didRegistry": "0x0000000000000000000000000000000000000000",
+    "deployer": "0x0000000000000000000000000000000000000000",
+    "blockDeployed": 0
+  }
+}

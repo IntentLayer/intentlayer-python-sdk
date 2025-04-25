@@ -12,22 +12,17 @@ import time
 
 from intentlayer_sdk import IntentClient
 from intentlayer_sdk.models import TxReceipt
-from intentlayer_sdk.utils import ipfs_cid_to_bytes, create_envelope, sha256_hex
+from intentlayer_sdk.utils import ipfs_cid_to_bytes, sha256_hex
+from intentlayer_sdk.envelope import create_envelope
 from intentlayer_sdk.exceptions import PinningError, TransactionError, EnvelopeError
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
-# Test constants
-TEST_RPC_URL = "https://rpc.example.com"
-TEST_PINNER_URL = "https://pin.example.com"
-TEST_STAKE_WEI = 1000000000000000  # 0.001 ETH
-TEST_PRIV_KEY = "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-TEST_CONTRACT = "0x1234567890123456789012345678901234567890"
+from tests.test_helpers import create_test_client, TEST_RPC_URL, TEST_PINNER_URL, TEST_STAKE_WEI, TEST_PRIV_KEY, TEST_CONTRACT
 
 def test_client_url_validation():
     """Test URL validation in client initialization"""
     # Test HTTP URLs are rejected for production
     with pytest.raises(ValueError, match="rpc_url must use https"):
-        IntentClient(
+        create_test_client(
             rpc_url="http://insecure.example.com",
             pinner_url="https://pin.example.com",
             min_stake_wei=TEST_STAKE_WEI,
@@ -35,7 +30,7 @@ def test_client_url_validation():
         )
     
     with pytest.raises(ValueError, match="pinner_url must use https"):
-        IntentClient(
+        create_test_client(
             rpc_url="https://rpc.example.com",
             pinner_url="http://insecure.example.com",
             min_stake_wei=TEST_STAKE_WEI,
@@ -43,7 +38,7 @@ def test_client_url_validation():
         )
     
     # Test localhost URLs are allowed with HTTP
-    client = IntentClient(
+    client = create_test_client(
         rpc_url="http://localhost:8545",
         pinner_url="http://localhost:5001",
         min_stake_wei=TEST_STAKE_WEI,
@@ -52,7 +47,7 @@ def test_client_url_validation():
     assert client.rpc_url == "http://localhost:8545"
     
     # Test 127.0.0.1 URLs are allowed with HTTP
-    client = IntentClient(
+    client = create_test_client(
         rpc_url="http://127.0.0.1:8545",
         pinner_url="http://127.0.0.1:5001",
         min_stake_wei=TEST_STAKE_WEI,
@@ -61,7 +56,7 @@ def test_client_url_validation():
     assert client.rpc_url == "http://127.0.0.1:8545"
     
     # Test trailing slash is removed from pinner URL
-    client = IntentClient(
+    client = create_test_client(
         rpc_url=TEST_RPC_URL,
         pinner_url=TEST_PINNER_URL + "/",  # With trailing slash
         min_stake_wei=TEST_STAKE_WEI,
@@ -77,7 +72,7 @@ def test_pin_to_ipfs_content_type_warning(requests_mock):
         headers={"Content-Type": "text/plain"}  # Not application/json
     )
     
-    client = IntentClient(
+    client = create_test_client(
         rpc_url=TEST_RPC_URL,
         pinner_url=TEST_PINNER_URL,
         min_stake_wei=TEST_STAKE_WEI,
@@ -137,7 +132,7 @@ def test_envelope_hash_processing():
 
 def test_sanitize_payload():
     """Test payload sanitization"""
-    client = IntentClient(
+    client = create_test_client(
         rpc_url=TEST_RPC_URL,
         pinner_url=TEST_PINNER_URL,
         min_stake_wei=TEST_STAKE_WEI,
@@ -187,7 +182,7 @@ def test_utils_ipfs_cid_to_bytes_edge_cases():
     # Test unicode non-base58, non-hex
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        result = ipfs_cid_to_bytes("你好世界")  # Hello world in Chinese
+        result = ipfs_cid_to_bytes("你好世界", allow_utf8_fallback=True)  # Hello world in Chinese
         assert len(w) >= 1
         assert issubclass(w[0].category, UserWarning)
     assert result == "你好世界".encode('utf-8')

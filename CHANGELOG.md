@@ -5,6 +5,58 @@ All notable changes to the IntentLayer Python SDK will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2025-04-25
+
+### Fixed
+- URLlib3 compatibility issues with URLlib3 2.x by using signature inspection instead of attribute checking
+- Fixed test failures caused by method_whitelist parameter in Retry constructor
+
+## [0.2.0] - 2025-04-25
+
+### Added
+- Network configuration system with networks.json
+- Factory method for network-based client initialization (from_network)
+- DID registry interaction for registration and resolution
+- Modular signer system with Protocol interface
+- Property caching with time-based expiration
+- Chain ID validation for transaction safety
+- CID length validation with automatic truncation for Solidity contracts
+
+### Fixed
+- Exception handling for InactiveDIDError and AlreadyRegisteredError
+- IPFS CID conversion with proper fallback options
+- Package data configuration to include networks.json in distribution
+- Missing validation for address property when signer is missing
+- URLlib3 compatibility issues with better attribute detection
+- Stake slippage by re-querying min_stake_wei on gas estimation failures
+- Manually set min_stake_wei values now won't auto-refresh
+
+### Changed
+- Consolidated models and removed duplication
+- Improved error handling architecture 
+- Enhanced test coverage to 80%+
+- Updated client constructor to use signer and recorder_address
+- Better dependency specifications in pyproject.toml
+- Added py.typed marker file for improved typing support
+- Improved poetry packaging configuration
+
+### Removed
+- Backward compatibility layer (IntentLayerClient class)
+- Deprecated aliases and parameter handling
+- Legacy contract_address parameter in favor of recorder_address
+- Legacy priv_key parameter in favor of signer object
+- Unused imports and dependencies
+
+## [0.1.3] - 2025-04-24
+
+### Fixed
+- python >=3.9 in pyproject.toml 
+
+## [0.1.2] - 2025-04-24
+
+### Fixed
+- Packaging configuration to include data files
+
 ## [0.1.1] - 2025-04-24
 
 ### Added
@@ -21,9 +73,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated HTTP retry configuration for better reliability
 - Improved logging for error conditions
 
-### Deprecated
-- The backward compatibility layer for `IntentLayerClient` alias will be removed in version 1.0.0. 
-  Please use `IntentClient` instead.
 
 ## [0.1.0] - 2025-04-15
 

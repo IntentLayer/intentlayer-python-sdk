@@ -1,21 +1,36 @@
 [project]
 name = "intentlayer-sdk"
-version = "0.1.4"
+version = "0.2.1"
 description = "Python SDK for IntentLayer - handles intent recording and IPFS pinning"
 authors = [
-    {name = "Ryan Sevey",email = "ryan.sevey@gmail.com"}
+    {name = "Ryan Sevey",email = "dev@intentlayer.net"}
 ]
 readme = "README.md"
+license = {file = "LICENSE"}
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11"
+]
 requires-python = ">=3.11,<4.0"
 dependencies = [
-    "web3 (>=7.10.0,<8.0.0)",
-    "requests (>=2.31.0)",
-    "pydantic (>=2.5.0)",
-    "cryptography (>=44.0.0)",
-    "base58 (>=2.1.1)"
+    "web3 >= 7.10.0, < 8.0.0",
+    "requests >= 2.31.0",
+    "pydantic >= 2.5.0",
+    "cryptography >= 44.0.0",
+    "base58 >= 2.1.1"
 ]
 
 [tool.poetry]
+packages = [
+    {include = "intentlayer_sdk"}
+]
+
+[[tool.poetry.include]]
+path = "intentlayer_sdk/networks.json"
+
+[[tool.poetry.include]]
+path = "intentlayer_sdk/py.typed"
 
 [tool.poetry.group.dev.dependencies]
 cryptography = "^44.0.2"
@@ -32,7 +47,7 @@ hypothesis = "^6.131.9"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"
-addopts = "--cov=intentlayer_sdk --cov-report=term --cov-fail-under=80"
+addopts = "--cov=intentlayer_sdk --cov-report=term --cov-fail-under=81"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

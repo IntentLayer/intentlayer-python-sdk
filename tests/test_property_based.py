@@ -8,8 +8,8 @@ import re
 from hypothesis import given, strategies as st, settings
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from intentlayer_sdk.utils import sha256_hex, create_envelope, create_envelope_hash
-from intentlayer_sdk.models import CallEnvelope
+from intentlayer_sdk.utils import sha256_hex, create_envelope_hash
+from intentlayer_sdk.envelope import create_envelope, CallEnvelope
 from conftest import TEST_STAKE_WEI
 
 # Define reasonable strategies for our inputs
