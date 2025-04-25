@@ -27,6 +27,7 @@ mypy = "^1.7.1"
 black = "^23.10.0"
 tomli = "^2.2.1"
 requests-mock = "^1.12.1"
+hypothesis = "^6.131.9"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

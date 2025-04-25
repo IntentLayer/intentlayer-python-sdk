@@ -92,3 +92,29 @@ def test_create_envelope():
     
     # Ensure signature is present and in the right format
     assert len(envelope.sig_ed25519) > 50  # Ed25519 signatures are ~86 chars in base64url
+    
+    # Test with auto-generated timestamp
+    auto_ts_envelope = create_envelope(
+        prompt="Test prompt",
+        model_id="test-model",
+        tool_id="test-tool",
+        did="did:key:test",
+        private_key=private_key,
+        stake_wei="1000000000000000",
+        timestamp_ms=None  # Auto timestamp
+    )
+    assert auto_ts_envelope.timestamp_ms is not None
+    assert isinstance(auto_ts_envelope.timestamp_ms, int)
+    
+    # Test with metadata
+    metadata = {"user_id": "test123", "session": "abc123"}
+    metadata_envelope = create_envelope(
+        prompt="Test prompt",
+        model_id="test-model",
+        tool_id="test-tool",
+        did="did:key:test",
+        private_key=private_key,
+        stake_wei="1000000000000000",
+        metadata=metadata
+    )
+    assert metadata_envelope.metadata == metadata
