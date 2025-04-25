@@ -1,6 +1,6 @@
 [project]
 name = "intentlayer-sdk"
-version = "0.1.2"
+version = "0.1.4"
 description = "Python SDK for IntentLayer - handles intent recording and IPFS pinning"
 authors = [
     {name = "Ryan Sevey",email = "ryan.sevey@gmail.com"}
