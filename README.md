@@ -49,49 +49,88 @@ pip install -e .
 
 ```python
 import os
-from intentlayer_sdk import IntentClient
-from intentlayer_sdk.exceptions import PinningError, TransactionError, EnvelopeError
-
-# 1. Configure via environment
-RPC_URL       = os.getenv("RPC_URL")
-PINNER_URL    = os.getenv("PINNER_URL")
-CONTRACT_ADDR = os.getenv("INTENTLAYER_CONTRACT")
-PRIVATE_KEY   = os.getenv("INTENTLAYER_PRIVATE_KEY")  # never commit this!
-
-# 2. Initialize client
-client = IntentClient(
-    rpc_url         = RPC_URL,
-    pinner_url      = PINNER_URL,
-    min_stake_wei   = 10**16,  # 0.01 ETH
-    priv_key        = PRIVATE_KEY,
-    contract_address= CONTRACT_ADDR,
+import time
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from intentlayer_sdk import (
+    IntentClient, create_envelope,
+    PinningError, EnvelopeError, TransactionError, NetworkError
 )
 
-# 3. Build and send intent
+# 1. Environment
+PINNER_URL = os.getenv("PINNER_URL", "https://pin.example.com")
+PRIVATE_KEY = os.getenv("PRIVATE_KEY")  # never commit this!
+
+# 2. Initialize client using network configuration
+client = IntentClient.from_network(
+    network="zksync-era-sepolia",  # Network from networks.json
+    pinner_url=PINNER_URL,
+    signer=PRIVATE_KEY,  # Can be a private key string or a Signer instance
+)
+
+# Verify connected to the right chain
+client.assert_chain_id()
+
+# Query minimum stake from contract
+min_stake = client.min_stake_wei
+print(f"Minimum stake: {min_stake / 10**18} ETH")
+
+# 3. Register a DID first (if not already registered)
+did = "did:key:z6MkpzExampleDid"
+
+try:
+    # Check if DID already exists
+    owner, active = client.resolve_did(did)
+    if owner == "0x0000000000000000000000000000000000000000":
+        # DID not registered yet - register it
+        print(f"Registering DID: {did}")
+        reg_receipt = client.register_did(did)
+        print(f"DID registered: {client.tx_url(reg_receipt['transactionHash'])}")
+    elif not active:
+        # DID exists but inactive
+        print(f"Reactivating DID: {did}")
+        client.register_did(did, force=True)
+    else:
+        print(f"DID already registered to {owner}")
+except Exception as e:
+    print(f"Error checking/registering DID: {e}")
+
+# 4. Create a signed envelope
+prompt = "Translate 'hello' to French"
+private_key = Ed25519PrivateKey.generate()  # For envelope signing
+
+# Create full envelope with signature
+envelope = create_envelope(
+    prompt=prompt,
+    model_id="gpt-4o@2025-03-12",
+    tool_id="openai.chat",
+    did=did,
+    private_key=private_key,
+    stake_wei=min_stake,
+    timestamp_ms=int(time.time() * 1000)
+)
+
+# Get envelope hash for on-chain recording
+envelope_hash = envelope.hex_hash()
+
+# 5. Create payload with envelope
 payload = {
-    "prompt": "Translate 'hello' to French",
-    "envelope": {
-        "did":           "did:key:z6MkpzExampleDid",
-        "model_id":      "gpt-4o@2025-03-12",
-        "prompt_sha256": "e3b0c44298fc1c149af…b7852b855",
-        "tool_id":       "openai.chat",
-        "timestamp_ms":  1711234567890,
-        "stake_wei":     "10000000000000000",
-        "sig_ed25519":   "<base64_signature>"
-    },
+    "prompt": prompt,
+    "envelope": envelope.model_dump(),
     "metadata": {
-        "user_id":    "user123",
+        "user_id": "user123",
         "session_id": "session456"
     }
 }
 
+# 6. Record intent on-chain
 try:
-    receipt = client.send_intent(envelope_hash="0x…envelopeHashHex", payload_dict=payload)
-    print(f"✔️ TxHash: {receipt.transactionHash}")
-    print(f"✔️ Block:  {receipt.blockNumber}")
-    print(f"✔️ Status: {'Success' if receipt.status == 1 else 'Failed'}")
-except PinningError     as e: print("IPFS error:", e)
-except EnvelopeError    as e: print("Envelope error:", e)
+    receipt = client.send_intent(envelope_hash=envelope_hash, payload_dict=payload)
+    tx_hash = receipt["transactionHash"]
+    print(f"✔️ TxHash: {tx_hash}")
+    print(f"✔️ Explorer: {client.tx_url(tx_hash)}")
+except PinningError as e: print("IPFS error:", e)
+except EnvelopeError as e: print("Envelope error:", e)
+except NetworkError as e: print("Network error:", e)
 except TransactionError as e: print("Tx failed:", e)
 ```
 
@@ -107,25 +146,70 @@ except TransactionError as e: print("Tx failed:", e)
 
 ## 📚 High-Level API
 
-### `IntentClient(...)`
+### `IntentClient.from_network(...)`
+
+| Parameter          | Type                 | Required             | Description                                              |
+|--------------------|----------------------|----------------------|----------------------------------------------------------|
+| `network`          | `str`                | Yes                  | Network name from networks.json (e.g., "zksync-era-sepolia") |
+| `pinner_url`       | `str`                | Yes                  | IPFS pinner service URL                                  |
+| `signer`           | `Union[str, Signer]` | Yes                  | Private key string or Signer instance                    |
+| `rpc_url`          | `str`                | No                   | Override RPC URL from networks.json                      |
+| `retry_count`      | `int` (default=3)    | No                   | HTTP retry attempts                                      |
+| `timeout`          | `int` (default=30)   | No                   | Request timeout in seconds                               |
+| `logger`           | `logging.Logger`     | No                   | Custom logger instance                                   |
+
+### `IntentClient(...)` (Legacy constructor)
 
 | Parameter          | Type                 | Required             | Description                                              |
 |--------------------|----------------------|----------------------|----------------------------------------------------------|
 | `rpc_url`          | `str`                | Yes                  | EVM RPC endpoint (must be `https://` in prod)           |
 | `pinner_url`       | `str`                | Yes                  | IPFS pinner service URL                                  |
-| `min_stake_wei`    | `int`                | Yes                  | Minimum collateral for `recordIntent()`                  |
-| `priv_key`         | `str`                | _one of_ `priv_key` or `signer` | Hex-encoded Ethereum private key (0x…)         |
-| `signer`           | `Signer`             | _one of_ `priv_key` or `signer` | Custom signer implementing `.sign_transaction()` |
-| `contract_address` | `str`                | Yes (for on-chain)   | Deployed `IntentRecorder` contract address               |
+| `signer`           | `Signer`             | Yes                  | Signer implementing `.sign_transaction()`               |
+| `recorder_address` | `str`                | Yes                  | Deployed `IntentRecorder` contract address               |
+| `did_registry_address` | `str`            | No                   | DIDRegistry contract address (for DID operations)        |
 | `retry_count`      | `int` (default=3)    | No                   | HTTP retry attempts                                      |
 | `timeout`          | `int` (default=30)   | No                   | Request timeout in seconds                               |
 | `logger`           | `logging.Logger`     | No                   | Custom logger instance                                   |
 
-#### `send_intent(...) → TxReceipt`
+### Key Methods
+
+#### `create_envelope(...) → CallEnvelope`
+
+Creates a complete signed envelope for recording an intent.
+
+```python
+from intentlayer_sdk import create_envelope
+envelope = create_envelope(
+    prompt="What is the capital of France?",
+    model_id="gpt-4o@2025-03-12",
+    tool_id="openai.chat",
+    did="did:key:z6MkpzExampleDid",
+    private_key=private_key,  # Ed25519PrivateKey instance
+    stake_wei=client.min_stake_wei
+)
+```
+
+#### `send_intent(...) → Dict[str, Any]`
 
 - **Pins** JSON to IPFS  
 - **Builds** & **signs** a `recordIntent` transaction  
 - **Sends** it on-chain and waits for a receipt  
+
+#### `register_did(did, ...) → Dict[str, Any]`
+
+Registers a DID with the DIDRegistry contract.
+
+#### `resolve_did(did) → Tuple[str, bool]`
+
+Resolves a DID to an address and active flag.
+
+#### `assert_chain_id()`
+
+Verifies the connected chain matches the expected chain ID.
+
+#### `tx_url(tx_hash) → str`
+
+Gets a block explorer URL for a transaction hash.
 
 ---
 

@@ -10,9 +10,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from intentlayer_sdk.utils import (
     create_envelope_hash, 
     sha256_hex, 
-    create_envelope, 
     ipfs_cid_to_bytes
 )
+from intentlayer_sdk.envelope import create_envelope
+from intentlayer_sdk.exceptions import EnvelopeError
 
 def test_sha256_hex():
     """Test SHA-256 hash calculation"""
@@ -62,8 +63,12 @@ def test_ipfs_cid_to_bytes():
     
     # Test with fallback
     fallback_cid = "not-base58-or-hex"
-    fallback_result = ipfs_cid_to_bytes(fallback_cid)
+    fallback_result = ipfs_cid_to_bytes(fallback_cid, allow_utf8_fallback=True)
     assert fallback_result == b"not-base58-or-hex"
+    
+    # Test without fallback raises error
+    with pytest.raises(EnvelopeError):
+        ipfs_cid_to_bytes(fallback_cid)
 
 def test_create_envelope():
     """Test envelope creation"""

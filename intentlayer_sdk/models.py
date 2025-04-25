@@ -4,16 +4,7 @@ Data models for the IntentLayer SDK.
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 
-class CallEnvelope(BaseModel):
-    """CallEnvelope-v0 schema representation"""
-    did: str
-    model_id: str
-    prompt_sha256: str
-    tool_id: str
-    timestamp_ms: int
-    stake_wei: str
-    sig_ed25519: str
-    metadata: Optional[Dict[str, Any]] = None
+# Note: CallEnvelope is now imported from envelope.py
 
 class TxReceipt(BaseModel):
     """

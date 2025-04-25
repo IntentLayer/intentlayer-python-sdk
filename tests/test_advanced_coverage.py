@@ -12,8 +12,9 @@ from web3.exceptions import TransactionNotFound, ContractLogicError
 import hashlib
 
 from intentlayer_sdk.client import IntentClient
-from intentlayer_sdk.models import TxReceipt, CallEnvelope
-from intentlayer_sdk.utils import sha256_hex, create_envelope, create_envelope_hash
+from intentlayer_sdk.models import TxReceipt
+from intentlayer_sdk.envelope import CallEnvelope, create_envelope
+from intentlayer_sdk.utils import sha256_hex, create_envelope_hash
 from intentlayer_sdk.exceptions import PinningError, TransactionError, EnvelopeError
 
 # Test constants
@@ -132,7 +133,7 @@ def test_ipfs_cid_conversions():
     # Test invalid CID fallback path (the warning path)
     invalid_cid = "invalid-not-base58"
     with pytest.warns(UserWarning):
-        result = ipfs_cid_to_bytes(invalid_cid)
+        result = ipfs_cid_to_bytes(invalid_cid, allow_utf8_fallback=True)
     assert result == b"invalid-not-base58"
 
 def test_direct_validation_methods():

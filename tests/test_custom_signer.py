@@ -8,6 +8,7 @@ import requests_mock
 from eth_account import Account
 from intentlayer_sdk import IntentClient
 from intentlayer_sdk.exceptions import TransactionError
+from tests.test_helpers import create_test_client, TEST_RPC_URL, TEST_PINNER_URL, TEST_STAKE_WEI, TEST_PRIV_KEY, TEST_CONTRACT
 
 class CustomSigner:
     """Custom signer implementation for testing"""
@@ -29,13 +30,17 @@ class FailingSigner:
         raise ValueError("Signing failed deliberately")
 
 @patch('intentlayer_sdk.client.Web3', autospec=True)
-def test_custom_signer(MockWeb3, mock_w3, mock_account, test_payload, requests_mock):
+@patch('intentlayer_sdk.client.ipfs_cid_to_bytes')
+def test_custom_signer(mock_ipfs_cid_to_bytes, MockWeb3, mock_w3, mock_account, test_payload, requests_mock):
     """Test successful use of a custom signer"""
     # Setup mocks
     mock_provider = MagicMock()
     MockWeb3.HTTPProvider.return_value = mock_provider
     MockWeb3.return_value = mock_w3
     MockWeb3.keccak.return_value = b'0123456789abcdef' * 2
+    
+    # Mock IPFS CID conversion
+    mock_ipfs_cid_to_bytes.return_value = b'mocked_cid_bytes'
     
     # Mock pinner
     requests_mock.post(
@@ -57,12 +62,12 @@ def test_custom_signer(MockWeb3, mock_w3, mock_account, test_payload, requests_m
     signer = CustomSigner(mock_account)
     
     # Create client with mocked web3 and custom signer
-    client = IntentClient(
-        rpc_url="https://rpc.example.com",
-        pinner_url="https://pin.example.com",
-        min_stake_wei=1000000000000000,
+    client = create_test_client(
+        rpc_url=TEST_RPC_URL,
+        pinner_url=TEST_PINNER_URL,
+        min_stake_wei=TEST_STAKE_WEI,
         signer=signer,  # Use custom signer
-        contract_address="0x1234567890123456789012345678901234567890"
+        recorder_address=TEST_CONTRACT
     )
     
     # Directly set the mocked web3 instance
@@ -78,14 +83,11 @@ def test_custom_signer(MockWeb3, mock_w3, mock_account, test_payload, requests_m
     receipt = client.send_intent(envelope_hash, test_payload)
     
     # Verify
-    # Don't check exact tx_hash value, just ensure it's a non-empty string
-    assert isinstance(receipt.tx_hash, str)
-    assert receipt.tx_hash.startswith("0x")
-    assert len(receipt.tx_hash) > 10
+    # The receipt is now a dictionary, not a TxReceipt object
+    assert isinstance(receipt, dict)
+    assert "transactionHash" in receipt
     
-    # Check other properties
-    assert receipt.block_number > 0  # Just check it's a positive number
-    assert receipt.status == 1
+    # Check that our mocks were called correctly
     assert requests_mock.called
     assert mock_w3.eth.send_raw_transaction.called
     assert signer.sign_transaction.called
@@ -95,13 +97,17 @@ def test_custom_signer(MockWeb3, mock_w3, mock_account, test_payload, requests_m
     assert client.address == signer.address
 
 @patch('intentlayer_sdk.client.Web3', autospec=True)
-def test_failing_signer(MockWeb3, mock_w3, test_payload, requests_mock):
+@patch('intentlayer_sdk.client.ipfs_cid_to_bytes')
+def test_failing_signer(mock_ipfs_cid_to_bytes, MockWeb3, mock_w3, test_payload, requests_mock):
     """Test handling of a signer that fails to sign"""
     # Setup mocks
     mock_provider = MagicMock()
     MockWeb3.HTTPProvider.return_value = mock_provider
     MockWeb3.return_value = mock_w3
     MockWeb3.keccak.return_value = b'0123456789abcdef' * 2
+    
+    # Mock IPFS CID conversion
+    mock_ipfs_cid_to_bytes.return_value = b'mocked_cid_bytes'
     
     # Mock pinner
     requests_mock.post(
@@ -123,12 +129,12 @@ def test_failing_signer(MockWeb3, mock_w3, test_payload, requests_mock):
     signer = FailingSigner()
     
     # Create client with mocked web3 and failing signer
-    client = IntentClient(
-        rpc_url="https://rpc.example.com",
-        pinner_url="https://pin.example.com",
-        min_stake_wei=1000000000000000,
+    client = create_test_client(
+        rpc_url=TEST_RPC_URL,
+        pinner_url=TEST_PINNER_URL,
+        min_stake_wei=TEST_STAKE_WEI,
         signer=signer,
-        contract_address="0x1234567890123456789012345678901234567890"
+        recorder_address=TEST_CONTRACT
     )
     
     # Directly set the mocked web3 instance
