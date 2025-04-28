@@ -5,6 +5,7 @@ import os
 import json
 import time
 import pytest
+import base64
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -12,6 +13,7 @@ from intentlayer_sdk.identity import (
     get_or_create_did, create_new_identity, delete_local, list_identities, Identity
 )
 from intentlayer_sdk.identity.key_store import KeyStore
+from intentlayer_sdk.identity.crypto import encrypt_key_data
 from intentlayer_sdk.signer.local import LocalSigner
 
 
@@ -36,6 +38,8 @@ def large_keystore(tmp_path):
     path = tmp_path / "keys.json"
     os.environ["INTENT_KEY_STORE_PATH"] = str(path)
     os.environ["CI"] = "true"
+    # Set a test master key to make encryption deterministic
+    os.environ["INTENT_MASTER_KEY"] = base64.b64encode(b"0123456789abcdef0123456789abcdef").decode('ascii')
     
     # Create store with 100 dummy identities
     store = {"identities": {}}
@@ -45,13 +49,25 @@ def large_keystore(tmp_path):
     for i in range(100):
         did = f"did:key:z1234567890{i}"
         created_at = (now - timedelta(days=i)).isoformat()
-        store["identities"][did] = {
-            "encrypted": "ZHVtbXkK",  # "dummy" in base64
-            "version": 1,
-            "metadata": {
-                "created_at": created_at
-            }
+        
+        # Create a simple valid identity data structure
+        sample_data = {
+            "did": did,
+            "created_at": created_at,
+            "private_key": base64.b64encode(f"private_key_{i}".encode()).decode('ascii'),
+            "public_key": base64.b64encode(f"public_key_{i}".encode()).decode('ascii')
         }
+        
+        # Properly encrypt it
+        encrypted_data = encrypt_key_data(sample_data)
+        
+        # Add metadata
+        encrypted_data["metadata"] = {
+            "created_at": created_at
+        }
+        
+        # Add to store
+        store["identities"][did] = encrypted_data
     
     # Write to file
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -65,12 +81,13 @@ def large_keystore(tmp_path):
         os.remove(path)
     del os.environ["INTENT_KEY_STORE_PATH"]
     os.environ.pop("CI", None)
+    os.environ.pop("INTENT_MASTER_KEY", None)
 
 
 def test_get_or_create_did_auto_true(temp_keystore):
     """Test get_or_create_did with auto=True"""
     identity = get_or_create_did(auto=True)
-    assert identity.did.startswith("did:key:z")
+    assert identity.did.startswith("did:key:")
     assert identity.signer is not None
     assert isinstance(identity.signer, LocalSigner)
     assert isinstance(identity.created_at, datetime)

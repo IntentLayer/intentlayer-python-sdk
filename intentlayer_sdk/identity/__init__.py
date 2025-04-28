@@ -13,6 +13,7 @@ import hashlib
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Union, Tuple
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption
 
 from intentlayer_sdk.signer.local import LocalSigner

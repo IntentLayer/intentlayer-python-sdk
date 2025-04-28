@@ -4,6 +4,7 @@ Secure key storage for the identity module.
 import os
 import json
 import stat
+import time
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, List
@@ -81,13 +82,26 @@ class KeyStore:
         Returns:
             Dictionary with store contents
         """
-        with portalocker.Lock(self._get_lock_path(), timeout=10):
+        # Use non-blocking lock with exponential backoff to prevent deadlocks
+        max_attempts = 5
+        for attempt in range(max_attempts):
             try:
-                with open(self.store_path, 'r') as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, FileNotFoundError):
-                # Return empty store if file is empty or not found
-                return {"identities": {}}
+                with portalocker.Lock(self._get_lock_path(), timeout=0):
+                    try:
+                        with open(self.store_path, 'r') as f:
+                            return json.load(f)
+                    except (json.JSONDecodeError, FileNotFoundError):
+                        # Return empty store if file is empty or not found
+                        return {"identities": {}}
+            except portalocker.exceptions.LockException:
+                # Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms
+                backoff = (2 ** attempt) * 0.05
+                logger.debug(f"Lock busy, retrying in {backoff:.2f}s (attempt {attempt+1}/{max_attempts})")
+                time.sleep(backoff)
+                continue
+                
+        # If we get here, all attempts failed
+        raise IOError(f"Could not acquire lock for {self.store_path} after {max_attempts} attempts")
     
     def write(self, data: Dict[str, Any]):
         """
@@ -96,9 +110,23 @@ class KeyStore:
         Args:
             data: Dictionary to write to store
         """
-        with portalocker.Lock(self._get_lock_path(), timeout=10):
-            with open(self.store_path, 'w') as f:
-                json.dump(data, f, indent=2)
+        # Use non-blocking lock with exponential backoff to prevent deadlocks
+        max_attempts = 5
+        for attempt in range(max_attempts):
+            try:
+                with portalocker.Lock(self._get_lock_path(), timeout=0):
+                    with open(self.store_path, 'w') as f:
+                        json.dump(data, f, indent=2)
+                    return
+            except portalocker.exceptions.LockException:
+                # Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms
+                backoff = (2 ** attempt) * 0.05
+                logger.debug(f"Lock busy, retrying in {backoff:.2f}s (attempt {attempt+1}/{max_attempts})")
+                time.sleep(backoff)
+                continue
+                
+        # If we get here, all attempts failed
+        raise IOError(f"Could not acquire lock for {self.store_path} after {max_attempts} attempts")
     
     def add_identity(self, did: str, identity_data: Dict[str, Any], metadata: Optional[Dict[str, Any]] = None):
         """
