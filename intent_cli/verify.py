@@ -2,8 +2,8 @@
 """
 Verify command for IntentLayer CLI.
 
-This module implements the 'verify' command which verifies that an IntentEnvelope 
-recorded on-chain exactly matches the JSON envelope stored on IPFS.
+This module implements the 'verify' command which verifies that the hash of the JSON 
+envelope stored on IPFS matches the hash recorded on-chain.
 """
 import sys
 import json
@@ -15,7 +15,6 @@ from typing import Dict, Any, Optional, Tuple, List
 import typer
 import requests
 from web3 import Web3
-from web3._utils.events import get_event_signature_hex
 from web3.types import TxReceipt
 
 from intentlayer_sdk.config import NetworkConfig
