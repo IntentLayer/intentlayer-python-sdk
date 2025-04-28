@@ -21,6 +21,7 @@ from intentlayer_sdk.identity.crypto import (
     generate_ed25519_keypair, derive_did_from_pubkey, 
     encrypt_key_data, decrypt_key_data
 )
+from intentlayer_sdk.identity.ec_constants import SECP256K1_N, SECP256K1_MIN, SECP256K1_MAX
 from intentlayer_sdk.identity.types import Identity
 
 __all__ = [
@@ -85,6 +86,33 @@ def _create_identity_data() -> Tuple[Dict[str, Any], Ed25519PrivateKey, bytes]:
     return identity_data, private_key, public_key
 
 
+def _derive_eth_key_from_ed25519(ed25519_private_key: bytes) -> str:
+    """
+    Derive a valid Ethereum private key from an Ed25519 private key.
+    
+    Args:
+        ed25519_private_key: Ed25519 private key bytes
+        
+    Returns:
+        Ethereum private key as hex string with 0x prefix
+        
+    Notes:
+        This function ensures the derived key is within the valid range
+        for SECP256K1 curve (between 1 and the curve order - 1)
+    """
+    # Get a deterministic value from the Ed25519 key
+    hash_bytes = hashlib.sha256(ed25519_private_key).digest()
+    
+    # Convert to integer
+    hash_int = int.from_bytes(hash_bytes, byteorder='big')
+    
+    # Ensure the value is within the valid range for SECP256K1
+    valid_private_key = (hash_int % (SECP256K1_N - 1)) + 1
+    
+    # Convert back to hex
+    return "0x" + format(valid_private_key, '064x')
+
+
 def _identity_data_to_identity(data: Dict[str, Any]) -> Identity:
     """
     Convert stored identity data to Identity object.
@@ -98,17 +126,21 @@ def _identity_data_to_identity(data: Dict[str, Any]) -> Identity:
     # Decode private key
     private_key_bytes = base64.b64decode(data["private_key"])
     
-    # Create signer from the private key
-    # Note: For simplicity, we derive an Ethereum key from the Ed25519 key
-    # In a production environment, you might want a more sophisticated approach
-    eth_private_key = "0x" + hashlib.sha256(private_key_bytes).hexdigest()
+    # Create signer from the private key using proper key derivation
+    eth_private_key = _derive_eth_key_from_ed25519(private_key_bytes)
     signer = LocalSigner(eth_private_key)
+    
+    # Get created_at from either metadata (new format) or direct field (old format)
+    if "metadata" in data and "created_at" in data["metadata"]:
+        created_at = datetime.fromisoformat(data["metadata"]["created_at"])
+    else:
+        created_at = datetime.fromisoformat(data["created_at"])
     
     # Create Identity object
     return Identity(
         did=data["did"],
         signer=signer,
-        created_at=datetime.fromisoformat(data["created_at"]),
+        created_at=created_at,
         org_id=data.get("org_id"),
         agent_label=data.get("agent_label")
     )
@@ -137,9 +169,14 @@ def get_or_create_did(auto: bool = True) -> Identity:
     
     if identities:
         # Use the most recently created identity
+        # Check for metadata-based created_at first, then fall back to direct value
         sorted_identities = sorted(
             identities,
-            key=lambda i: i.get("created_at", ""),
+            key=lambda i: (
+                i.get("metadata", {}).get("created_at", "") 
+                if "metadata" in i 
+                else i.get("created_at", "")
+            ),
             reverse=True
         )
         
@@ -163,11 +200,17 @@ def get_or_create_did(auto: bool = True) -> Identity:
     # Create new identity
     identity_data, _, _ = _create_identity_data()
     
+    # Extract metadata for storage outside encryption
+    created_at = identity_data["created_at"]
+    metadata = {
+        "created_at": created_at
+    }
+    
     # Encrypt sensitive data
     encrypted_data = encrypt_key_data(identity_data)
     
-    # Store in key store
-    store.add_identity(identity_data["did"], encrypted_data)
+    # Store in key store with unencrypted metadata
+    store.add_identity(identity_data["did"], encrypted_data, metadata)
     
     # Convert to Identity object
     identity = _identity_data_to_identity(identity_data)
@@ -194,12 +237,18 @@ def create_new_identity() -> Identity:
     # Create new identity data
     identity_data, _, _ = _create_identity_data()
     
+    # Extract metadata for storage outside encryption
+    created_at = identity_data["created_at"]
+    metadata = {
+        "created_at": created_at
+    }
+    
     # Encrypt sensitive data
     encrypted_data = encrypt_key_data(identity_data)
     
-    # Store in key store
+    # Store in key store with unencrypted metadata
     store = _get_key_store()
-    store.add_identity(identity_data["did"], encrypted_data)
+    store.add_identity(identity_data["did"], encrypted_data, metadata)
     
     # Convert to Identity object
     identity = _identity_data_to_identity(identity_data)
@@ -239,8 +288,16 @@ def list_identities() -> List[Identity]:
         # Decrypt if needed
         if "encrypted" in data:
             try:
-                data = decrypt_key_data(data)
-                identities.append(_identity_data_to_identity(data))
+                # Decrypt the sensitive data
+                decrypted_data = decrypt_key_data(data)
+                
+                # Add metadata from the store entry if available
+                if "metadata" in data:
+                    for key, value in data["metadata"].items():
+                        decrypted_data[key] = value
+                        
+                # Convert to Identity object
+                identities.append(_identity_data_to_identity(decrypted_data))
             except Exception as e:
                 logger.error(f"Failed to decrypt identity: {e}")
     

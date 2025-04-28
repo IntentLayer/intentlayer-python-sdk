@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for auto_did in IntentClient.from_network
 - New example showcasing the automatic DID feature
 
+### Fixed
+- Proper multicodec encoding in did:key generation
+- Improved Ethereum key derivation from Ed25519 keys using proper modular arithmetic
+- Secure encryption with nacl.SecretBox storing full encrypted payload
+- Metadata storage outside of encrypted content for better identity sorting
+- Added documentation about Windows permission limitations
+
 ## [0.3.0] - 2025-04-27
 
 ### Added

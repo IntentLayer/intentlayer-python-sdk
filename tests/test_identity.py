@@ -47,8 +47,10 @@ def large_keystore(tmp_path):
         created_at = (now - timedelta(days=i)).isoformat()
         store["identities"][did] = {
             "encrypted": "ZHVtbXkK",  # "dummy" in base64
-            "nonce": "ZHVtbXkK",      # "dummy" in base64
-            "version": 1
+            "version": 1,
+            "metadata": {
+                "created_at": created_at
+            }
         }
     
     # Write to file

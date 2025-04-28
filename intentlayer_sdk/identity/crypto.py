@@ -57,9 +57,9 @@ def derive_did_from_pubkey(public_key: bytes) -> str:
     # Add the correct multicodec prefix 0xED 0x01 for Ed25519
     multicodec_key = b"\xed\x01" + public_key
     
-    # Base58 encode with did:key prefix
+    # Base58 encode - note that the base58 library already prepends the 'z' prefix
     encoded = base58.b58encode(multicodec_key).decode("ascii")
-    did = f"did:key:z{encoded}"
+    did = f"did:key:{encoded}"
     
     # Log truncated DID for privacy
     logger.info("Generated DID %s…", did[:6])
@@ -145,7 +145,7 @@ def encrypt_key_data(data: Dict[str, Any]) -> Dict[str, Any]:
         data: Dictionary with sensitive key data
         
     Returns:
-        Dictionary with encrypted data and nonce
+        Dictionary with encrypted data
     """
     # Convert data to JSON bytes
     json_data = json.dumps(data).encode("utf-8")
@@ -156,16 +156,13 @@ def encrypt_key_data(data: Dict[str, Any]) -> Dict[str, Any]:
     # Create secret box
     box = nacl.secret.SecretBox(key)
     
-    # Generate a random nonce for this encryption
-    nonce = nacl.utils.random(nacl.secret.SecretBox.NONCE_SIZE)
+    # Generate a random nonce and encrypt the data
+    # Note: box.encrypt already combines nonce+ciphertext+tag in its output
+    encrypted = box.encrypt(json_data)
     
-    # Encrypt the data
-    encrypted = box.encrypt(json_data, nonce)
-    
-    # Store the nonce with the encrypted data
+    # Store the full encrypted data (which already includes the nonce)
     return {
-        "encrypted": base64.b64encode(encrypted.ciphertext).decode("ascii"),
-        "nonce": base64.b64encode(nonce).decode("ascii"),
+        "encrypted": base64.b64encode(encrypted).decode("ascii"),
         "version": 1  # For future format changes
     }
 
@@ -175,7 +172,7 @@ def decrypt_key_data(encrypted_data: Dict[str, Any]) -> Dict[str, Any]:
     Decrypt key data.
     
     Args:
-        encrypted_data: Dictionary with encrypted data and nonce
+        encrypted_data: Dictionary with encrypted data
         
     Returns:
         Decrypted data as dictionary
@@ -189,13 +186,13 @@ def decrypt_key_data(encrypted_data: Dict[str, Any]) -> Dict[str, Any]:
     # Create secret box
     box = nacl.secret.SecretBox(key)
     
-    # Get ciphertext and nonce
-    ciphertext = base64.b64decode(encrypted_data["encrypted"])
-    nonce = base64.b64decode(encrypted_data["nonce"])
+    # Get full encrypted data (includes nonce+ciphertext+tag)
+    encrypted = base64.b64decode(encrypted_data["encrypted"])
     
     # Decrypt
     try:
-        decrypted = box.decrypt(ciphertext, nonce=nonce)
+        # box.decrypt automatically handles nonce extraction
+        decrypted = box.decrypt(encrypted)
         return json.loads(decrypted.decode("utf-8"))
     except Exception as e:
         raise ValueError(f"Failed to decrypt key data: {e}")

@@ -5,7 +5,6 @@ import os
 import json
 import stat
 import logging
-import ctypes
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
@@ -52,8 +51,8 @@ class KeyStore:
         if not directory.exists():
             directory.mkdir(parents=True, exist_ok=True)
             
-        # Set secure permissions on directory
-        if os.name == 'posix':  # Unix/Linux/Mac
+        # Set secure permissions on directory (Unix/Linux/Mac only)
+        if os.name == 'posix':  
             os.chmod(directory, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)  # 0700
             
         # Ensure the store file exists with proper permissions
@@ -61,15 +60,15 @@ class KeyStore:
             with open(self.store_path, 'w') as f:
                 json.dump({"identities": {}}, f)
                 
-        # Set secure permissions on file
-        if os.name == 'posix':  # Unix/Linux/Mac
+        # Set secure permissions on file (Unix/Linux/Mac only)
+        if os.name == 'posix':
             os.chmod(self.store_path, stat.S_IRUSR | stat.S_IWUSR)  # 0600
         elif os.name == 'nt':  # Windows
-            # Make file hidden and system on Windows
-            try:
-                ctypes.windll.kernel32.SetFileAttributesW(str(self.store_path), 0x80)
-            except Exception as e:
-                logger.warning(f"Could not set Windows file attributes: {e}")
+            # NOTE: Windows doesn't provide equivalent file permission control via simple APIs
+            # For production environments on Windows, it's recommended to use a KMS solution
+            # or implement proper ACL controls with dedicated Windows security APIs
+            logger.info("Windows file permissions cannot be restricted to current user only."
+                        " Consider using KMS for production environments.")
     
     def _get_lock_path(self) -> str:
         """Get path for the lock file"""
@@ -101,16 +100,23 @@ class KeyStore:
             with open(self.store_path, 'w') as f:
                 json.dump(data, f, indent=2)
     
-    def add_identity(self, did: str, identity_data: Dict[str, Any]):
+    def add_identity(self, did: str, identity_data: Dict[str, Any], metadata: Optional[Dict[str, Any]] = None):
         """
         Add a new identity to the store.
         
         Args:
             did: DID of the identity
-            identity_data: Identity data to store
+            identity_data: Identity data to store (typically encrypted)
+            metadata: Optional metadata that will be stored unencrypted
         """
         store = self.read()
-        store["identities"][did] = identity_data
+        
+        # Combine identity data with metadata
+        entry = identity_data.copy()
+        if metadata:
+            entry["metadata"] = metadata
+            
+        store["identities"][did] = entry
         self.write(store)
     
     def get_identity(self, did: str) -> Optional[Dict[str, Any]]:
