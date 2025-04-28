@@ -18,12 +18,17 @@ dependencies = [
     "requests >= 2.31.0",
     "pydantic >= 2.5.0",
     "cryptography >= 44.0.0",
-    "base58 >= 2.1.1"
+    "base58 >= 2.1.1",
+    "typer >= 0.9.0"
 ]
+
+[project.scripts]
+intent-cli = "intent_cli.__main__:app"
 
 [tool.poetry]
 packages = [
-    {include = "intentlayer_sdk"}
+    {include = "intentlayer_sdk"},
+    {include = "intent_cli"}
 ]
 
 [[tool.poetry.include]]

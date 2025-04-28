@@ -7,6 +7,7 @@ This directory contains examples showing how to use the IntentLayer SDK.
 - `simple_usage.py`: Basic example with manual initialization
 - `network_example.py`: Demonstrates network-based initialization
 - `smoke_test.py`: Simple test script
+- `verify_example.py`: Shows how to use the `intent-cli verify` command to verify on-chain intents
 
 ## Running an Example
 
