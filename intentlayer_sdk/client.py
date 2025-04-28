@@ -83,11 +83,12 @@ class IntentClient:
         cls,
         network: str,
         pinner_url: str,
-        signer: Union[Signer, str],
+        signer: Union[Signer, str, None] = None,
         rpc_url: Optional[str] = None,
         retry_count: int = 3,
         timeout: int = 30,
         logger: Optional[logging.Logger] = None,
+        auto_did: bool = False,
     ) -> "IntentClient":
         """
         Create an IntentClient from a network configuration.
@@ -95,11 +96,12 @@ class IntentClient:
         Args:
             network: Network name from networks.json (e.g., "zksync-era-sepolia")
             pinner_url: URL of the IPFS pinning service
-            signer: Either a Signer instance or a private key string
+            signer: Either a Signer instance, a private key string, or None (with auto_did)
             rpc_url: Optional RPC URL override
             retry_count: Number of retries for HTTP requests
             timeout: Timeout in seconds for HTTP requests
             logger: Optional logger instance
+            auto_did: Whether to automatically create/use a DID identity
             
         Returns:
             Configured IntentClient instance
@@ -114,9 +116,28 @@ class IntentClient:
             # Determine RPC URL
             effective_rpc = NetworkConfig.get_rpc_url(network, rpc_url)
             
+            # Auto-DID handling
+            identity = None
+            if auto_did:
+                # Import here to avoid circular imports
+                from intentlayer_sdk.identity import get_or_create_did
+                identity = get_or_create_did(auto=True)
+                
+                # Use identity's signer if no signer was provided
+                if signer is None:
+                    signer = identity.signer
+                    
+                # Log DID (truncated for privacy)
+                if logger:
+                    logger.info("Using DID %s…", identity.did[:6])
+            
             # Create a signer if given a private key
             if isinstance(signer, str):
                 signer = LocalSigner(signer)
+                
+            # Ensure signer is provided
+            if signer is None:
+                raise ValueError("signer must be provided or auto_did must be True")
             
             # Create the client
             client = cls(
@@ -133,6 +154,10 @@ class IntentClient:
             # Store network info for chain ID validation
             client._network_name = network
             client._expected_chain_id = int(net_config["chainId"])
+            
+            # Store identity reference if using auto_did
+            if identity:
+                client._identity = identity
             
             return client
             

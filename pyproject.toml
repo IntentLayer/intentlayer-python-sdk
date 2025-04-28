@@ -1,6 +1,6 @@
 [project]
 name = "intentlayer-sdk"
-version = "0.3.0"
+version = "0.4.0"
 description = "Python SDK for IntentLayer - handles intent recording and IPFS pinning"
 authors = [
     {name = "Ryan Sevey",email = "dev@intentlayer.net"}
@@ -19,7 +19,10 @@ dependencies = [
     "pydantic >= 2.5.0",
     "cryptography >= 44.0.0",
     "base58 >= 2.1.1",
-    "typer >= 0.9.0"
+    "typer >= 0.9.0",
+    "pynacl >= 1.5.0",
+    "portalocker >= 2.8.0",
+    "keyring >= 24.3.0"
 ]
 
 [project.scripts]

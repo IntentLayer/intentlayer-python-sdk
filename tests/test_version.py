@@ -44,7 +44,7 @@ def test_version_file_not_found(monkeypatch):
     monkeypatch.setattr('pathlib.Path.open', lambda *args, **kwargs: (_ for _ in ()).throw(FileNotFoundError()))
     import intentlayer_sdk.version as vmod
     importlib.reload(vmod)
-    assert vmod.__version__ == "0.3.0"
+    assert vmod.__version__ == "0.4.0"
 
 
 def test_version_key_error(monkeypatch):
@@ -55,7 +55,7 @@ def test_version_key_error(monkeypatch):
     monkeypatch.setattr('pathlib.Path.open', m)
     import intentlayer_sdk.version as vmod
     importlib.reload(vmod)
-    assert vmod.__version__ == "0.3.0"
+    assert vmod.__version__ == "0.4.0"
 
 
 def test_version_toml_decode_error(monkeypatch):
@@ -68,4 +68,4 @@ def test_version_toml_decode_error(monkeypatch):
     monkeypatch.setattr(tomli, 'load', lambda f: (_ for _ in ()).throw(tomli.TOMLDecodeError("fail", b"", 0)))
     import intentlayer_sdk.version as vmod
     importlib.reload(vmod)
-    assert vmod.__version__ == "0.3.0"
+    assert vmod.__version__ == "0.4.0"

@@ -14,7 +14,7 @@ def test_version_fallback_to_default(monkeypatch):
     monkeypatch.setattr("pathlib.Path.open", lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError))
     import intentlayer_sdk.version as vmod
     importlib.reload(vmod)
-    assert vmod.__version__ == "0.3.0"
+    assert vmod.__version__ == "0.4.0"
 
 def test_version_key_error_fallback(monkeypatch):
     # metadata.version fails but file opens, but missing key
@@ -31,4 +31,4 @@ def test_version_key_error_fallback(monkeypatch):
     # Force reload
     import intentlayer_sdk.version as vmod
     importlib.reload(vmod)
-    assert vmod.__version__ == "0.3.0"  # Default fallback
+    assert vmod.__version__ == "0.4.0"  # Default fallback
