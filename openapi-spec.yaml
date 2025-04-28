@@ -5,7 +5,7 @@ info:
     This specification documents the IntentLayer SDK API to assist in the development of
     the TypeScript SDK. While the actual SDK is not an HTTP API, this OpenAPI document
     models the interfaces and behaviors that should be implemented.
-  version: 0.2.1
+  version: 0.3.0
   license:
     name: MIT
     url: https://github.com/IntentLayer/intentlayer-python-sdk/blob/main/LICENSE
