@@ -140,7 +140,7 @@ def test_direct_validation_methods():
     """Test validation methods directly"""
     
     # Create a minimal client to test validation methods
-    client = IntentClient.__new__(IntentClient)
+    client = object.__new__(IntentClient)
     client.logger = MagicMock()
     
     # 1. Test _validate_payload with various inputs

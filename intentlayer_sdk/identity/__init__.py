@@ -24,13 +24,16 @@ from intentlayer_sdk.identity.crypto import (
 )
 from intentlayer_sdk.identity.ec_constants import SECP256K1_N, SECP256K1_MIN, SECP256K1_MAX
 from intentlayer_sdk.identity.types import Identity
+from intentlayer_sdk.identity.registration import extract_org_id_from_api_key, IdentityManager
 
 __all__ = [
     'get_or_create_did',
     'create_new_identity',
     'delete_local',
     'list_identities',
-    'Identity'
+    'Identity',
+    'extract_org_id_from_api_key',
+    'IdentityManager'
 ]
 
 logger = logging.getLogger(__name__)

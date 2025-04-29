@@ -13,7 +13,7 @@ from tests.test_helpers import create_test_client, TEST_RPC_URL, TEST_PINNER_URL
 def test_address_property_no_credentials():
     """Accessing .address with no signer should ValueError."""
     # Bypass __init__ key check by injecting attributes manually
-    client = IntentClient.__new__(IntentClient)
+    client = object.__new__(IntentClient)
     # Initialize logger to avoid AttributeError
     client.logger = MagicMock()
     # Set signer to None

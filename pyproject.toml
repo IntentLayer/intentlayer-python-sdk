@@ -9,10 +9,10 @@ readme = "README.md"
 license = {file = "LICENSE"}
 classifiers = [
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10", 
     "Programming Language :: Python :: 3.11"
 ]
-requires-python = ">=3.11,<4.0"
+requires-python = ">=3.10,<4.0"
 dependencies = [
     "web3 >= 7.10.0, < 8.0.0",
     "requests >= 2.31.0",
@@ -22,7 +22,20 @@ dependencies = [
     "typer >= 0.9.0",
     "pynacl >= 1.5.0",
     "portalocker >= 2.8.0",
-    "keyring >= 24.3.0"
+    "keyring >= 24.3.0",
+    "PyJWT >= 2.8.0",
+    "fasteners >= 0.19.0",
+    "appdirs >= 1.4.4",
+    "certifi >= 2022.12.7",
+    "grpcio (>=1.71.0,<2.0.0)",
+    "protobuf (>=6.30.2,<7.0.0)"
+]
+
+[project.optional-dependencies]
+grpc = [
+    "grpcio >= 1.59.0",
+    "grpcio-tools >= 1.59.0",
+    "protobuf >= 4.24.0"
 ]
 
 [project.scripts]
@@ -41,11 +54,11 @@ path = "intentlayer_sdk/networks.json"
 path = "intentlayer_sdk/py.typed"
 
 [tool.poetry.group.dev.dependencies]
-cryptography = "^44.0.2"
 click = "^8.1.8"
 pytest = "^7.0.0"
 respx = "^0.20.0"
 pytest-cov = "^4.1.0"
+pytest-benchmark = "^4.0.0"
 mypy = "^1.7.1"
 black = "^23.10.0"
 tomli = "^2.2.1"
@@ -56,6 +69,9 @@ hypothesis = "^6.131.9"
 testpaths = ["tests"]
 python_files = "test_*.py"
 addopts = "--cov=intentlayer_sdk --cov-report=term --cov-branch --cov-fail-under=75"
+
+[tool.coverage.run]
+# No omissions to ensure we get accurate coverage for all modules
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
