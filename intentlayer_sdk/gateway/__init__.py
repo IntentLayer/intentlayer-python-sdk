@@ -14,10 +14,11 @@ import logging
 import threading
 from typing import Optional, Dict, Any
 
-from .exceptions import QuotaExceededError
+from .exceptions import QuotaExceededError, AlreadyRegisteredError
 from ._deps import ensure_grpc_installed
 
-__all__ = ['GatewayClient', 'ensure_grpc_installed', 'QuotaExceededError', 'get_gateway_client']
+__all__ = ['GatewayClient', 'ensure_grpc_installed', 'QuotaExceededError', 
+           'AlreadyRegisteredError', 'get_gateway_client']
 
 logger = logging.getLogger(__name__)
 
