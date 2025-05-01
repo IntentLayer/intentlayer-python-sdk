@@ -5,34 +5,34 @@ All notable changes to the IntentLayer Python SDK will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 0.4.1
+## [0.5.0] - 2025-05-01
 
 ### Added
-- Auto-provision DID on first outbound SDK call
-- Gateway service integration for transparent DID registration
-- JWT org_id claim extraction for Gateway registration
-- Module-level singleton caching for Gateway clients to optimize performance
-- Security improvements for API key handling and TLS validation
-- Documentation for all environment variables and configuration options
-- Concurrent DID registration protection with inter-process locking
-- Added optional gRPC dependencies for Gateway integration (via pip install intentlayer-sdk[grpc])
-- Support for custom CA certificates for enterprise Gateway integrations
+- Transport layer abstraction for Gateway client to improve modularity
+- Created GatewayTransport base class with Protocol Buffers implementation
+- Thread-safe rate-limited logging with proper locking mechanisms
+- Standardized JWT handling across different environments
+- Windows compatibility for proto generation with platform-independent commands
+- Redis-based distributed locking for multi-node deployments
+- Improved error handling and retry logic for Gateway operations
 
 ### Changed
-- Default auto_did to True in IntentClient.from_network()
-- Updated README with zero-config quickstart example
-- Made the API more user-friendly by requiring fewer configuration steps
+- **BREAKING:** Gateway now requires schema version 2 for all DID registrations
+- **BREAKING:** V1 Protocol support has been removed
+- **BREAKING:** Now requires gRPC dependencies for Gateway integration (via pip install intentlayer-sdk[grpc])
+- Updated documentation and examples for V2-only protocol support
+- Enhanced cross-platform compatibility for development workflows
+- Improved thread safety across the codebase
 
 ### Fixed
-- Fixed proper error handling for Gateway quota exceeded scenarios
-- Improved security validation for Gateway URLs to enforce HTTPS
-- Added rate-limited logging for repeated error conditions
-- Fixed circular import in Gateway client module with _deps.py standalone module
-- Enhanced thread safety with proper locking for shared resources
-- Improved security with JWT algorithm validation to prevent zip-bomb attacks
-- Added concurrency protection for DID registration with process-wide file locks
-- Fixed TLS pinning documentation to clarify custom CA certificate behavior
-- Increased test coverage and fixed coverage configuration
+- Enhanced thread safety in _rate_limited_log with proper locking
+- Made JWT unsafe algorithm handling consistent across environment tiers
+- Adjusted TTLCache test to avoid time.sleep() dependencies
+- Added Windows compatibility for proto generation
+- Fixed Makefile for cross-platform compatibility
+- Removed runtime pip install calls from build process
+- Improved CI/CD pipeline for better verification across platforms
+
 
 ## [0.4.0] - 2025-04-28
 

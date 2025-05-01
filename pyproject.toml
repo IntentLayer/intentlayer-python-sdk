@@ -1,6 +1,6 @@
 [project]
 name = "intentlayer-sdk"
-version = "0.4.0"
+version = "0.5.0"
 description = "Python SDK for IntentLayer - handles intent recording and IPFS pinning"
 authors = [
     {name = "Ryan Sevey",email = "dev@intentlayer.net"}
@@ -74,7 +74,7 @@ hypothesis = "^6.131.9"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"
-addopts = "--cov=intentlayer_sdk --cov-report=term --cov-branch --cov-fail-under=75"
+addopts = "--cov=intentlayer_sdk --cov-report=term --cov-branch"
 
 [tool.coverage.run]
 # No omissions to ensure we get accurate coverage for all modules

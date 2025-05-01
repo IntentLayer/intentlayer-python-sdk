@@ -1,6 +1,6 @@
 # Auto-DID with Gateway Registration
 
-This document explains how to use the IntentLayer SDK's automatic DID (Decentralized Identifier) feature with Gateway integration, which was introduced in version 0.4.0 and enhanced in version 0.4.1.
+This document explains how to use the IntentLayer SDK's automatic DID (Decentralized Identifier) feature with Gateway integration, which was introduced in version 0.4.0 and enhanced in version 0.5.0.
 
 ## What is Auto-DID?
 
@@ -10,7 +10,7 @@ Auto-DID is a feature that:
 2. Registers that DID with the IntentLayer Gateway service on your first call to `send_intent()`
 3. Handles all the complexity of DID management transparently
 4. Provides robust locking mechanisms to prevent concurrent registrations
-5. Supports distributed deployments with Redis-based locking (added in v0.4.1)
+5. Supports distributed deployments with Redis-based locking
 6. Includes comprehensive error handling and retry logic
 
 This feature significantly reduces the "time-to-first-intent" friction by eliminating manual DID creation and registration steps.
@@ -25,7 +25,7 @@ Make sure you have the latest version of the SDK with Gateway support:
 # Basic installation
 pip install intentlayer-sdk
 
-# With gRPC support for Gateway integration
+# With gRPC support for Gateway integration (required)
 pip install intentlayer-sdk[grpc]
 ```
 
@@ -160,7 +160,7 @@ You can disable auto-DID if needed:
 | `INTENT_AUTO_DID` | Enable/disable auto-DID feature | `true` |
 | `INTENT_INSECURE_GW` | Allow insecure Gateway URLs | `false` |
 | `INTENT_SKIP_CHAIN_CHECK` | Skip chain ID validation | `false` |
-| `INTENT_SCHEMA_VERSION` | Schema version to use for DID registration | None |
+| `INTENT_SCHEMA_VERSION` | Schema version to use for DID registration | `2` |
 | `INTENT_GW_TIMEOUT` | Gateway request timeout in seconds | `5` |
 | `INTENT_LOCK_STRATEGY` | Locking strategy: "file" or "redis" | `file` |
 | `INTENT_REDIS_URL` | Redis URL for distributed locking | None |
@@ -171,7 +171,7 @@ You can disable auto-DID if needed:
 
 #### Schema Version
 
-You can specify a schema version for DID registration:
+The SDK now uses schema version 2 by default for all DID registrations. This is required for the Gateway service:
 
 ```python
 client = IntentClient.from_network(
@@ -180,8 +180,8 @@ client = IntentClient.from_network(
     gateway_url="https://gateway.intentlayer.net"
 )
 
-# Later, when sending an intent:
-os.environ["INTENT_SCHEMA_VERSION"] = "2"  # Set schema version
+# The schema_version is automatically set to 2
+# There is no need to manually set INTENT_SCHEMA_VERSION
 ```
 
 #### Distributed Locking with Redis
@@ -245,9 +245,9 @@ See the full example in [examples/auto_did_gateway_example.py](../examples/auto_
 
 The following section provides detailed technical specifications for the Gateway service team to properly implement support for the auto-DID feature.
 
-### gRPC Service Interface (V2 Protocol)
+### gRPC Service Interface
 
-The Gateway service must implement the following gRPC interface for V2 protocol:
+The Gateway service implements the following gRPC interface:
 
 ```protobuf
 syntax = "proto3";
@@ -261,9 +261,9 @@ message DidDocument {
   bytes pub_key = 2;
   optional string org_id = 3;
   optional string label = 4;
-  optional int32 schema_version = 5;  // Added in v0.4.1
-  optional string doc_cid = 6;        // Added in v0.4.1
-  optional string payload_cid = 7;    // Added in v0.4.1
+  optional int32 schema_version = 5;
+  optional string doc_cid = 6;
+  optional string payload_cid = 7;
 }
 
 message TxReceipt {
@@ -271,7 +271,7 @@ message TxReceipt {
   int32 gas_used = 2;
   bool success = 3;
   string error = 4;
-  RegisterError error_code = 5;  // Added in v0.4.1
+  RegisterError error_code = 5;
 }
 
 enum RegisterError {
@@ -340,7 +340,7 @@ The Gateway must handle concurrent registration attempts from multiple clients a
 
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
-| `INTENT_SCHEMA_VERSION` | Schema version to use for registration | None |
+| `INTENT_SCHEMA_VERSION` | Schema version to use for registration | `2` |
 | `INTENT_LOCK_STRATEGY` | Locking strategy: "file" or "redis" | "file" |
 | `INTENT_REDIS_URL` | Redis URL for distributed locking | None |
 | `INTENT_GW_TIMEOUT` | Timeout for Gateway requests (seconds) | 5 |

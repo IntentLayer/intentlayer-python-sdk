@@ -6,6 +6,15 @@
 
 A batteries-included client for the IntentLayer protocol: pin JSON payloads to IPFS, generate cryptographically-signed envelopes, and record intents on any EVM-compatible chain in a single call.
 
+> **⚠️ IMPORTANT: Version 0.5.0 Upgrade Notice**
+>
+> V0.5.0 includes breaking changes:
+> - Gateway integration now requires gRPC dependencies: `pip install intentlayer-sdk[grpc]`
+> - Protocol V1 support has been removed
+> - Schema version 2 is now required for all DID registrations
+>
+> See the [CHANGELOG.md](CHANGELOG.md) for full details.
+
 ---
 
 ## 🚀 Key Benefits
@@ -29,10 +38,17 @@ A batteries-included client for the IntentLayer protocol: pin JSON payloads to I
 
 ## 🔧 Installation
 
-Install from PyPI:
+Install from PyPI with required dependencies:
 
 ```bash
+# Basic installation 
 pip install intentlayer-sdk
+
+# With Gateway support (recommended)
+pip install intentlayer-sdk[grpc]
+
+# With Redis-based distributed locking
+pip install intentlayer-sdk[grpc,redis]
 ```
 
 For development or latest changes:
@@ -40,7 +56,7 @@ For development or latest changes:
 ```bash
 git clone https://github.com/intentlayer/intentlayer-sdk.git
 cd intentlayer-sdk
-pip install -e .
+pip install -e ".[grpc]"
 ```
 
 ---
@@ -176,8 +192,12 @@ client.send_intent(envelope.hex_hash(), {"prompt": "...", "envelope": envelope.m
 | `INTENT_AUTO_DID`     | Enable/disable auto-DID provisioning               | true                  |
 | `INTENT_INSECURE_GW`  | Allow HTTP Gateway URLs (development only)         | false                 |
 | `INTENT_GW_TIMEOUT`   | Gateway request timeout in seconds                 | 5                     |
+| `INTENT_SCHEMA_VERSION` | Schema version for DID registration               | 2                     |
 | `INTENT_KEY_STORE_PATH` | Path to the identity key store                   | ~/.intentlayer/keys.json |
 | `INTENT_GATEWAY_CA`   | Path to custom CA certificate for Gateway TLS      | None                  |
+| `INTENT_LOCK_STRATEGY` | Locking strategy ("file" or "redis")              | "file"                |
+| `INTENT_REDIS_URL`    | Redis URL for distributed locking                  | None                  |
+| `INTENT_ENV_TIER`     | Environment tier ("production", "test", "development") | "production"       |
 
 ---
 

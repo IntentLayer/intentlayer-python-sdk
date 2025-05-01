@@ -80,15 +80,7 @@ from .exceptions import (
 
 logger = logging.getLogger(__name__)
 
-# Rate limiting for error logs
-if TTLCACHE_AVAILABLE:
-    # Use TTLCache with a maximum of 100 entries and 1 hour TTL
-    _error_log_cache = TTLCache(maxsize=100, ttl=3600)
-    _error_log_cache_lock = threading.Lock()  # Thread safety for the cache
-else:
-    # Fallback to simple dict if TTLCache is not available
-    logger.info("cachetools.TTLCache not available, using simple dict for rate limiting")
-    _error_log_timestamps = {}
+# Rate limiting for error logs is handled by the shared implementation in _rate_limited_log.py
 
 
 from dataclasses import dataclass
@@ -194,7 +186,7 @@ class DidDocument:
     pub_key: bytes
     org_id: Optional[str] = None
     label: Optional[str] = None
-    schema_version: Optional[int] = None
+    schema_version: int = 2  # Default to schema version 2 for V2 protocol
     doc_cid: Optional[str] = None
     payload_cid: Optional[str] = None
     
@@ -269,8 +261,8 @@ class DidDocument:
         Returns:
             DidDocument instance
         """
-        # Extract schema_version from wrapper if present
-        schema_version = None
+        # Extract schema_version from wrapper if present, default to 2 for V2 protocol
+        schema_version = 2  # Default to schema version 2
         if hasattr(proto_doc, "schema_version") and proto_doc.HasField("schema_version"):
             schema_version = proto_doc.schema_version.value
             
@@ -290,7 +282,7 @@ class GatewayClient:
     Client for interacting with the IntentLayer Gateway service using V2 protocol.
 
     This client handles DID registration and intent submission via gRPC.
-    Note: As of v0.4.1, only V2 protocol is supported.
+    Note: As of v0.5.0, only V2 protocol is supported. V1 protocol support has been removed entirely.
     """
 
     def __init__(
@@ -541,35 +533,11 @@ class GatewayClient:
             level: Log level (debug, info, warning, error, critical)
             interval: Minimum interval between logs in seconds
         """
-        key = f"{level}:{message}"
-
-        # Get the appropriate log method
-        log_method = getattr(logger, level.lower(), logger.warning)  # Default to warning if invalid level
-
-        if TTLCACHE_AVAILABLE:
-            # Thread-safe check and update
-            with _error_log_cache_lock:
-                # If the key is in the cache, we've logged it recently
-                if key in _error_log_cache:
-                    return  # Skip logging
-                
-                # Log the message and update the cache
-                log_method(message)
-                _error_log_cache[key] = True  # Value doesn't matter, TTL handles expiry
-        else:
-            # Fallback to timestamp-based approach
-            now = datetime.now()
-            
-            # Check if we've logged this recently
-            last_time = _error_log_timestamps.get(key)
-            if last_time and (now - last_time < timedelta(seconds=interval)):
-                return  # Skip logging
-                
-            # Log the message
-            log_method(message)
-            
-            # Update timestamp
-            _error_log_timestamps[key] = now
+        # Import the shared rate_limited_log implementation
+        from ._rate_limited_log import rate_limited_log
+        
+        # Use the shared implementation with our logger
+        rate_limited_log(message, level, interval, logger)
 
     def _create_metadata(self) -> Optional[Tuple[Tuple[str, str], ...]]:
         """
@@ -675,7 +643,7 @@ class GatewayClient:
         pub_key: Optional[bytes] = None,
         org_id: Optional[str] = None,
         label: Optional[str] = None,
-        schema_version: Optional[int] = None,
+        schema_version: int = 2,  # Default to schema version 2 for V2 protocol
         doc_cid: Optional[str] = None,
         payload_cid: Optional[str] = None,
         max_retries: int = 3,

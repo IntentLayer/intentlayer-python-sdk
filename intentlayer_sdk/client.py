@@ -654,14 +654,16 @@ class IntentClient:
             # 0. Ensure DID is registered with Gateway service if we have an identity manager
             if hasattr(self, "_identity_manager"):
                 try:
-                    # Configure schema version from environment if available
+                    # Configure schema version from environment if available, default to 2
                     schema_version = os.environ.get("INTENT_SCHEMA_VERSION")
                     if schema_version:
                         try:
                             schema_version = int(schema_version)
                         except ValueError:
                             self.logger.warning(f"Invalid INTENT_SCHEMA_VERSION: {schema_version}. Using default.")
-                            schema_version = None
+                            schema_version = 2
+                    else:
+                        schema_version = 2
                     
                     # Get lock strategy from environment
                     lock_strategy = os.environ.get("INTENT_LOCK_STRATEGY")

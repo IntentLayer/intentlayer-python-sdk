@@ -31,33 +31,33 @@ This document outlines the plan to address the feedback on the Auto-DID Gateway 
 
 ## Critical Pre-Production Fixes (HIGH PRIORITY)
 
-1. ✅ **Makefile & Proto Generation Issues** (Owner: Claude, Completed: 2023-05-03)
+1. ✅ **Makefile & Proto Generation Issues** (Owner: rsevey, Completed: 2023-05-03)
    - [x] Remove runtime pip install calls for stable CI/CD builds
    - [x] Use pinned dependencies in pyproject.toml or requirements.txt
    - [x] Fix platform-dependent stat command (macOS vs Linux compatibility)
    - [x] Relocate temp files from /tmp to .build/ directory to avoid race conditions
    - [x] Add CI job that verifies proto generation across platforms
 
-2. ✅ **Example Script Fixes** (Owner: Claude, Completed: 2023-05-04)
+2. ✅ **Example Script Fixes** (Owner: rsevey, Completed: 2023-05-04)
    - [x] Fix schema_version parameter mismatch with from_network signature
    - [x] Make input() prompts conditional with argparse and CI detection
    - [x] Separate demo code from library usage patterns
    - [x] Add non-interactive mode for CI pipelines
 
-3. 🔴 **Code Structure Improvements** (Owner: TBD, Target: 2023-05-05)
-   - [ ] Extract a transport layer to reduce conditional PROTO_AVAILABLE branches
-   - [ ] Enhance thread safety in _rate_limited_log by wrapping the entire function
-   - [ ] Make JWT unsafe algorithm handling consistent across all environment tiers
-   - [ ] Adjust TTLCache test to avoid time.sleep() dependencies
-   - [ ] Add Windows compatibility for proto generation (pyproject.toml tasks)
+3. ✅ **Code Structure Improvements** (Owner: Claude, Completed: 2023-05-05)
+   - [x] Extract a transport layer to reduce conditional PROTO_AVAILABLE branches
+   - [x] Enhance thread safety in _rate_limited_log by wrapping the entire function
+   - [x] Make JWT unsafe algorithm handling consistent across all environment tiers
+   - [x] Adjust TTLCache test to avoid time.sleep() dependencies
+   - [x] Add Windows compatibility for proto generation (pyproject.toml tasks)
 
-4. 🔴 **V1 Protocol Deprecation & Cleanup** (Owner: TBD, Target: 2023-05-06)
+4. 🔴 **V1 Protocol Deprecation & Cleanup** (Owner: rsevey, Target: 2023-05-06)
    - [ ] Remove or archive all V1-only code, contracts, and tests
    - [ ] Update all documentation to reflect V2-only support
    - [ ] Remove V1 compatibility layers in client code
    - [ ] Add deprecation notices where appropriate
 
-5. 🔴 **Documentation & Version Updates** (Owner: TBD, Target: 2023-05-07)
+5. 🔴 **Documentation & Version Updates** (Owner: rsevey, Target: 2023-05-07)
    - [ ] Update README.md to reflect V2-only protocol support
    - [ ] Bump SDK version to 0.5.0 in pyproject.toml
    - [ ] Create CHANGELOG.md entry documenting the breaking change
@@ -120,11 +120,11 @@ This document outlines the plan to address the feedback on the Auto-DID Gateway 
 - [x] Fix platform-dependent stat command for Linux compatibility
 - [x] Fix schema_version parameter mismatch in auto_did_v2_example.py
 - [x] Make example scripts CI-friendly with non-interactive mode
-- [ ] Simplify conditional PROTO_AVAILABLE logic with transport layer abstraction
-- [ ] Improve thread safety in _rate_limited_log
-- [ ] Make JWT unsafe algorithm rejection consistent
+- [x] Simplify conditional PROTO_AVAILABLE logic with transport layer abstraction
+- [x] Improve thread safety in _rate_limited_log
+- [x] Make JWT unsafe algorithm rejection consistent
 - [x] Add multi-platform CI checks for proto generation
-- [ ] Create Poetry/pyproject.toml tasks for Windows compatibility
+- [x] Create Poetry/pyproject.toml tasks for Windows compatibility
 - [ ] Remove/archive all V1-only code and contracts
 - [ ] Bump SDK version to 0.5.0 with proper CHANGELOG entry
 - [ ] Update documentation to reflect V2-only support

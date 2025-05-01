@@ -11,6 +11,9 @@ Key features demonstrated:
 - Automatic DID registration with Gateway on first send_intent call
 - Using environment variables for configuration
 - Error handling for Gateway-related operations
+
+Note: This example requires the gRPC dependencies to be installed:
+    pip install intentlayer-sdk[grpc]
 """
 import os
 import time
@@ -49,6 +52,9 @@ def main():
     
     # You can also set API key if you have one
     # os.environ["INTENT_API_KEY"] = "your.jwt.token"  # JWT format with org_id claim
+    
+    # Schema version 2 is required and used by default
+    # os.environ["INTENT_SCHEMA_VERSION"] = "2"  # This is now the default
     
     print("\n=== IntentLayer SDK Auto-DID with Gateway Example ===\n")
     print("This example demonstrates automatic DID creation and registration")
