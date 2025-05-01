@@ -9,21 +9,45 @@ import random
 import logging
 import urllib.parse
 import sys # Import sys to access modules if needed
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List, Union
 from datetime import datetime, timedelta
+import threading
 
 # Import JWT for API key parsing
 import jwt
+
+# Import TTLCache for rate limiting
+try:
+    from cachetools import TTLCache
+    TTLCACHE_AVAILABLE = True
+except ImportError:
+    TTLCACHE_AVAILABLE = False
 
 # Conditionally import gRPC dependencies at the module level for type hinting etc.
 # The GRPC_AVAILABLE flag controls runtime behavior.
 try:
     import grpc
     from google.protobuf import timestamp_pb2
-    # Note: The actual proto imports would normally be generated from .proto files
-    # Since we don't have access to the compiled protos, we'll use placeholders
-    # that will be replaced with actual implementations in a production environment
+    from google.protobuf import wrappers_pb2
+    
+    # Try to import the generated proto classes
+    try:
+        from .proto import (
+            RegisterError as ProtoRegisterError,
+            DidDocument as ProtoDidDocument,
+            TxReceipt as ProtoTxReceipt,
+            RegisterDidRequest,
+            RegisterDidResponse,
+            GatewayServiceStub,
+            PROTO_AVAILABLE
+        )
+    except ImportError:
+        # If proto imports fail, set PROTO_AVAILABLE to False
+        PROTO_AVAILABLE = False
+    
+    # If we get here, grpc is available
     GRPC_AVAILABLE = True
+    
 except ImportError:
     # Define placeholder types if grpc is not available, for type hinting consistency
     class grpc: # type: ignore
@@ -44,18 +68,27 @@ except ImportError:
         def insecure_channel(target): pass
 
     GRPC_AVAILABLE = False
+    PROTO_AVAILABLE = False
 
 from ._deps import ensure_grpc_installed
 
 from .exceptions import (
     GatewayError, GatewayConnectionError, GatewayResponseError,
-    GatewayTimeoutError, QuotaExceededError, AlreadyRegisteredError
+    GatewayTimeoutError, QuotaExceededError, AlreadyRegisteredError,
+    RegisterError
 )
 
 logger = logging.getLogger(__name__)
 
 # Rate limiting for error logs
-_error_log_timestamps = {}
+if TTLCACHE_AVAILABLE:
+    # Use TTLCache with a maximum of 100 entries and 1 hour TTL
+    _error_log_cache = TTLCache(maxsize=100, ttl=3600)
+    _error_log_cache_lock = threading.Lock()  # Thread safety for the cache
+else:
+    # Fallback to simple dict if TTLCache is not available
+    logger.info("cachetools.TTLCache not available, using simple dict for rate limiting")
+    _error_log_timestamps = {}
 
 
 from dataclasses import dataclass
@@ -66,12 +99,88 @@ class TxReceipt:
     """
     Represents a transaction receipt from the Gateway.
 
-    This is a placeholder that would be replaced with a proper protobuf-generated class.
+    This matches the protobuf-generated class for v2.TxReceipt.
     """
     hash: str = ""
     gas_used: int = 0
     success: bool = False
     error: str = ""
+    error_code: str = "UNKNOWN_UNSPECIFIED"  # RegisterError enum as string
+    
+    @classmethod
+    def validate(cls, receipt: 'TxReceipt') -> bool:
+        """
+        Validate that a TxReceipt has consistent success and error_code values.
+        
+        Args:
+            receipt: The receipt to validate
+            
+        Returns:
+            True if valid, raises ValueError otherwise
+        """
+        if receipt.success and receipt.error_code != "UNKNOWN_UNSPECIFIED":
+            raise ValueError(f"Invalid receipt: success=True with non-zero error code {receipt.error_code}")
+        return True
+    
+    def to_proto(self) -> "ProtoTxReceipt":
+        """
+        Convert to protobuf TxReceipt.
+        
+        Returns:
+            Proto TxReceipt
+        """
+        if not PROTO_AVAILABLE:
+            raise ImportError("Proto stubs are not available. Please install with 'pip install intentlayer-sdk[grpc]'")
+            
+        receipt = ProtoTxReceipt()
+        receipt.hash = self.hash
+        receipt.gas_used = self.gas_used
+        receipt.success = self.success
+        receipt.error = self.error
+        
+        # Convert the string error_code to the proto enum value
+        proto_enum_value = getattr(ProtoRegisterError, self.error_code, ProtoRegisterError.UNKNOWN_UNSPECIFIED)
+        receipt.error_code = proto_enum_value
+        
+        return receipt
+    
+    @classmethod
+    def from_proto(cls, proto_receipt: "ProtoTxReceipt") -> "TxReceipt":
+        """
+        Create a TxReceipt instance from a proto TxReceipt.
+        
+        Args:
+            proto_receipt: Proto TxReceipt object
+            
+        Returns:
+            TxReceipt instance
+        """
+        # Convert the proto enum value to string for our enum
+        error_code_str = ProtoRegisterError.Name(proto_receipt.error_code)
+        
+        return cls(
+            hash=proto_receipt.hash,
+            gas_used=proto_receipt.gas_used,
+            success=proto_receipt.success,
+            error=proto_receipt.error,
+            error_code=error_code_str
+        )
+    
+    @classmethod
+    def from_proto_response(cls, response: "RegisterDidResponse") -> "TxReceipt":
+        """
+        Create a TxReceipt instance from a RegisterDidResponse.
+        
+        Args:
+            response: RegisterDidResponse object containing a receipt
+            
+        Returns:
+            TxReceipt instance
+        """
+        if not hasattr(response, "receipt"):
+            raise ValueError("Response does not contain a receipt")
+            
+        return cls.from_proto(response.receipt)
 
 
 @dataclass
@@ -79,21 +188,109 @@ class DidDocument:
     """
     Represents a DID document for Gateway registration.
 
-    This is a placeholder that would be replaced with a proper protobuf-generated class.
-    Field 5 is reserved for parent_did in the upcoming INT-211 proto update.
+    This matches the protobuf-generated class for v2.DidDocument.
     """
     did: str
     pub_key: bytes
     org_id: Optional[str] = None
     label: Optional[str] = None
-    parent_did: Optional[str] = None  # Field 5 in proto - reserved for future parent_did delegation feature (INT-211)
+    schema_version: Optional[int] = None
+    doc_cid: Optional[str] = None
+    payload_cid: Optional[str] = None
+    
+    @staticmethod
+    def validate_cid(cid: Optional[str]) -> bool:
+        """
+        Validate that a CID string is properly formatted.
+        
+        Args:
+            cid: The CID string to validate
+            
+        Returns:
+            True if valid, raises ValueError otherwise
+        """
+        if cid is None:
+            return True
+            
+        # Strip 0x prefix if present
+        cid_value = cid[2:] if cid.startswith("0x") else cid
+        
+        # Check format: must be a lowercase hex string with 64 characters (32 bytes)
+        if not all(c in "0123456789abcdef" for c in cid_value):
+            raise ValueError(f"CID must be a lowercase hex string, got: {cid}")
+            
+        if len(cid_value) != 64:
+            raise ValueError(f"CID must be exactly 64 hex characters (32 bytes), got: {len(cid_value)}")
+            
+        return True
+    
+    def to_proto(self) -> "ProtoDidDocument":
+        """
+        Convert to protobuf DidDocument.
+        
+        Returns:
+            Proto DidDocument
+        """
+        if not PROTO_AVAILABLE:
+            raise ImportError("Proto stubs are not available. Please install with 'pip install intentlayer-sdk[grpc]'")
+            
+        # Validate CIDs
+        self.validate_cid(self.doc_cid)
+        self.validate_cid(self.payload_cid)
+        
+        doc = ProtoDidDocument()
+        doc.did = self.did
+        doc.pub_key = self.pub_key
+        
+        if self.org_id:
+            doc.org_id = self.org_id
+        if self.label:
+            doc.label = self.label
+            
+        # Handle schema_version using wrappers_pb2.UInt32Value
+        if self.schema_version is not None:
+            doc.schema_version.value = self.schema_version
+            
+        if self.doc_cid:
+            doc.doc_cid = self.doc_cid
+        if self.payload_cid:
+            doc.payload_cid = self.payload_cid
+            
+        return doc
+    
+    @classmethod
+    def from_proto(cls, proto_doc: "ProtoDidDocument") -> "DidDocument":
+        """
+        Create a DidDocument instance from a proto DidDocument.
+        
+        Args:
+            proto_doc: Proto DidDocument object
+            
+        Returns:
+            DidDocument instance
+        """
+        # Extract schema_version from wrapper if present
+        schema_version = None
+        if hasattr(proto_doc, "schema_version") and proto_doc.HasField("schema_version"):
+            schema_version = proto_doc.schema_version.value
+            
+        return cls(
+            did=proto_doc.did,
+            pub_key=proto_doc.pub_key,
+            org_id=proto_doc.org_id if proto_doc.org_id else None,
+            label=proto_doc.label if proto_doc.label else None,
+            schema_version=schema_version,
+            doc_cid=proto_doc.doc_cid if proto_doc.doc_cid else None,
+            payload_cid=proto_doc.payload_cid if proto_doc.payload_cid else None
+        )
 
 
 class GatewayClient:
     """
-    Client for interacting with the IntentLayer Gateway service.
+    Client for interacting with the IntentLayer Gateway service using V2 protocol.
 
     This client handles DID registration and intent submission via gRPC.
+    Note: As of v0.4.1, only V2 protocol is supported.
     """
 
     def __init__(
@@ -130,11 +327,16 @@ class GatewayClient:
         # Create gRPC channel and stub
         # Note: _create_channel uses 'import grpc' internally, which works with sys.modules patching
         self.channel = self._create_channel(gateway_url, verify_ssl)
-        # Stub would be created from generated proto code
-        # self.stub = gateway_pb2_grpc.GatewayServiceStub(self.channel)
-
-        # For the proof of concept, we'll simulate the stub
-        self.stub = self._create_stub_placeholder()
+        
+        # Create stub for gRPC communication (v2 protocol only)
+        if PROTO_AVAILABLE:
+            # Use the actual generated stub class
+            self.stub = GatewayServiceStub(self.channel)
+            logger.debug("Using proto-generated GatewayServiceStub")
+        else:
+            # For backwards compatibility or when proto deps are missing
+            logger.warning("Proto stubs not available - using placeholder implementation")
+            self.stub = self._create_stub_placeholder()
 
         logger.debug(f"Initialized Gateway client for {gateway_url}")
 
@@ -270,15 +472,62 @@ class GatewayClient:
         - proper error handling for actual gRPC responses
         """
         class StubPlaceholder:
-            def RegisterDid(self, request, timeout=None, metadata=None): # Add metadata arg
+            def RegisterDid(self, request, timeout=None, metadata=None):
+                """
+                Placeholder implementation for the RegisterDid RPC.
+                
+                Args:
+                    request: DidDocument instance
+                    timeout: Request timeout
+                    metadata: Request metadata
+                    
+                Returns:
+                    TxReceipt
+                """
                 # Simulate a successful response
                 logger.debug(f"StubPlaceholder.RegisterDid called with request: {request}, timeout: {timeout}, metadata: {metadata}")
+                
                 # In a real scenario, you might simulate errors based on input
+                # For simplicity, just check if the DID is already registered (hardcoded check)
+                from .exceptions import RegisterError
+                
+                # Basic validation checks to simulate Gateway behavior
+                if not request.did or len(request.did) < 10:
+                    return TxReceipt(
+                        hash="0x0000000000000000000000000000000000000000000000000000000000000000",
+                        gas_used=0,
+                        success=False,
+                        error="DID is too short or invalid",
+                        error_code=RegisterError.INVALID_DID
+                    )
+                
+                # Dummy check for already registered DIDs (just a placeholder)
+                if request.did == "did:key:already_registered":
+                    return TxReceipt(
+                        hash="0x0000000000000000000000000000000000000000000000000000000000000000",
+                        gas_used=0,
+                        success=False,
+                        error="DID has already been registered",
+                        error_code=RegisterError.ALREADY_REGISTERED
+                    )
+                
+                # Dummy check for rate limiting
+                if request.org_id == "quota_exceeded":
+                    return TxReceipt(
+                        hash="0x0000000000000000000000000000000000000000000000000000000000000000",
+                        gas_used=0,
+                        success=False,
+                        error="DID registration quota exceeded for organization",
+                        error_code=RegisterError.DID_QUOTA_EXCEEDED
+                    )
+                
+                # Default successful response
                 return TxReceipt(
-                    hash="0x0000000000000000000000000000000000000000000000000000000000000000",
-                    gas_used=0,
+                    hash="0x" + "0" * 64,  # 0x followed by 64 zeros
+                    gas_used=21000,
                     success=True,
-                    error=""
+                    error="",
+                    error_code=RegisterError.UNKNOWN_UNSPECIFIED
                 )
 
         return StubPlaceholder()
@@ -292,20 +541,35 @@ class GatewayClient:
             level: Log level (debug, info, warning, error, critical)
             interval: Minimum interval between logs in seconds
         """
-        now = datetime.now()
         key = f"{level}:{message}"
 
-        # Check if we've logged this recently
-        last_time = _error_log_timestamps.get(key)
-        if last_time and (now - last_time < timedelta(seconds=interval)):
-            return  # Skip logging
+        # Get the appropriate log method
+        log_method = getattr(logger, level.lower(), logger.warning)  # Default to warning if invalid level
 
-        # Log the message
-        log_method = getattr(logger, level.lower(), logger.warning) # Default to warning if invalid level
-        log_method(message)
-
-        # Update timestamp
-        _error_log_timestamps[key] = now
+        if TTLCACHE_AVAILABLE:
+            # Thread-safe check and update
+            with _error_log_cache_lock:
+                # If the key is in the cache, we've logged it recently
+                if key in _error_log_cache:
+                    return  # Skip logging
+                
+                # Log the message and update the cache
+                log_method(message)
+                _error_log_cache[key] = True  # Value doesn't matter, TTL handles expiry
+        else:
+            # Fallback to timestamp-based approach
+            now = datetime.now()
+            
+            # Check if we've logged this recently
+            last_time = _error_log_timestamps.get(key)
+            if last_time and (now - last_time < timedelta(seconds=interval)):
+                return  # Skip logging
+                
+            # Log the message
+            log_method(message)
+            
+            # Update timestamp
+            _error_log_timestamps[key] = now
 
     def _create_metadata(self) -> Optional[Tuple[Tuple[str, str], ...]]:
         """
@@ -316,22 +580,91 @@ class GatewayClient:
         """
         metadata = []
         if self.api_key:
-            # TODO: Add logic here to potentially validate/decode the API key if needed
-            # Example: Check expiry, required claims etc.
-            # try:
-            #     # Decode without verification just to check structure/expiry
-            #     # Replace with actual validation logic if required
-            #     decoded = jwt.decode(self.api_key, options={"verify_signature": False, "verify_aud": False})
-            #     # Check expiry if present
-            #     if 'exp' in decoded and datetime.utcfromtimestamp(decoded['exp']) < datetime.utcnow():
-            #         logger.error("API Key has expired.")
-            #         # Decide how to handle expired key - raise error? log warning? proceed anyway?
-            #         # For now, just log and proceed
-            # except jwt.ExpiredSignatureError:
-            #      logger.error("API Key has expired (jwt verification).")
-            # except jwt.InvalidTokenError as e:
-            #      logger.warning(f"Invalid API Key format: {e}")
-
+            # Determine environment tier for JWT validation rules
+            env_tier = os.environ.get("INTENT_ENV_TIER", "production").lower()
+            jwt_secret = os.environ.get("INTENT_JWT_SECRET")
+            
+            # Validate JWT token before using it
+            try:
+                # Check JWT header
+                try:
+                    header = jwt.get_unverified_header(self.api_key)
+                except jwt.DecodeError:
+                    logger.warning("Invalid JWT format in API key - could not decode header")
+                    # Still include it in metadata, but log the warning
+                    metadata.append(('authorization', f'Bearer {self.api_key}'))
+                    return tuple(metadata) if metadata else None
+                
+                # Always reject unsafe algorithms
+                algorithm = header.get("alg", "")
+                if algorithm.lower() in ("none", ""):
+                    logger.warning(f"Unsafe JWT algorithm: {algorithm}. API key will not be trusted.")
+                    # Still include it in metadata, but log the warning
+                    metadata.append(('authorization', f'Bearer {self.api_key}'))
+                    return tuple(metadata) if metadata else None
+                
+                # Validate differently based on environment tier
+                if env_tier == "production":
+                    # Production: Enforce HS256 + signature verification
+                    if algorithm != "HS256":
+                        logger.warning(f"Production environment requires HS256 algorithm, got: {algorithm}")
+                    elif jwt_secret:
+                        try:
+                            # Verify expiration and signature
+                            decoded = jwt.decode(
+                                self.api_key, 
+                                jwt_secret, 
+                                algorithms=["HS256"],
+                                options={"verify_signature": True, "verify_exp": True}
+                            )
+                            logger.info("API key signature verified successfully (production mode)")
+                            
+                            # Check additional claims if needed
+                            if "org_id" not in decoded:
+                                logger.warning("API key is missing org_id claim")
+                                
+                        except jwt.ExpiredSignatureError:
+                            logger.error("API key has expired")
+                        except jwt.InvalidSignatureError:
+                            logger.error("API key has invalid signature")
+                        except Exception as e:
+                            logger.error(f"API key validation failed: {e}")
+                    else:
+                        logger.warning("Production environment requires INTENT_JWT_SECRET for API key validation")
+                
+                elif env_tier == "test":
+                    # Test: Check format and expiration, but allow different algorithms
+                    try:
+                        # Don't verify signature but check other claims
+                        decoded = jwt.decode(
+                            self.api_key,
+                            options={"verify_signature": False, "verify_exp": True}
+                        )
+                        logger.info(f"API key format valid in test environment (algorithm: {algorithm})")
+                        
+                        # Still warn if org_id is missing
+                        if "org_id" not in decoded:
+                            logger.warning("API key is missing org_id claim")
+                            
+                    except jwt.ExpiredSignatureError:
+                        logger.warning("API key has expired (test environment)")
+                    except Exception as e:
+                        logger.warning(f"API key validation warning (test environment): {e}")
+                
+                else:
+                    # Dev: Minimal validation
+                    try:
+                        # Just check that it's decodable
+                        jwt.decode(self.api_key, options={"verify_signature": False, "verify_exp": False})
+                        logger.debug("API key format valid (development environment)")
+                    except Exception as e:
+                        logger.debug(f"API key validation issue (development environment): {e}")
+            
+            except Exception as e:
+                # Catch-all for any unexpected JWT validation errors
+                logger.warning(f"Unexpected error validating API key: {e}")
+            
+            # Always include the API key in metadata
             metadata.append(('authorization', f'Bearer {self.api_key}'))
 
         return tuple(metadata) if metadata else None # Return None if empty
@@ -342,6 +675,9 @@ class GatewayClient:
         pub_key: Optional[bytes] = None,
         org_id: Optional[str] = None,
         label: Optional[str] = None,
+        schema_version: Optional[int] = None,
+        doc_cid: Optional[str] = None,
+        payload_cid: Optional[str] = None,
         max_retries: int = 3,
         backoff_base: float = 0.5,
         retry_timeout: Optional[int] = None
@@ -356,6 +692,9 @@ class GatewayClient:
             pub_key: Public key associated with the DID (optional if already in DID)
             org_id: Organization ID (optional)
             label: Human-readable label for the DID (optional)
+            schema_version: Schema version number (optional)
+            doc_cid: Document CID (optional)
+            payload_cid: Payload CID (optional)
             max_retries: Maximum number of retry attempts (default: 3)
             backoff_base: Base delay for exponential backoff in seconds (default: 0.5)
             retry_timeout: Timeout for each retry attempt in seconds (defaults to self.timeout)
@@ -372,7 +711,15 @@ class GatewayClient:
         retry_count = 0
 
         # Create DID document once outside the retry loop
-        doc = DidDocument(did=did, pub_key=pub_key or b'', org_id=org_id, label=label)
+        doc = DidDocument(
+            did=did, 
+            pub_key=pub_key or b'', 
+            org_id=org_id, 
+            label=label,
+            schema_version=schema_version,
+            doc_cid=doc_cid,
+            payload_cid=payload_cid
+        )
 
         # Create metadata with authorization
         metadata = self._create_metadata()
@@ -392,20 +739,32 @@ class GatewayClient:
             current_timeout = retry_timeout if retry_timeout is not None else self.timeout
 
             try:
-                # Pass metadata to the stub call
-                response = self.stub.RegisterDid(doc, timeout=current_timeout, metadata=metadata)
+                # Prepare request based on proto availability
+                if PROTO_AVAILABLE:
+                    # Use the proper proto request format
+                    proto_doc = doc.to_proto()
+                    request = RegisterDidRequest(document=proto_doc)
+                    proto_response = self.stub.RegisterDid(request, timeout=current_timeout, metadata=metadata)
+                    response = TxReceipt.from_proto_response(proto_response)
+                else:
+                    # Use the legacy placeholder stub approach
+                    response = self.stub.RegisterDid(doc, timeout=current_timeout, metadata=metadata)
 
                 # Check for errors in the response
                 if not response.success:
                     error = response.error or "Unknown error from Gateway"
+                    error_code = response.error_code
 
-                    # Handle specific error cases
-                    if "ALREADY_REGISTERED" in error:
+                    # Import the RegisterError enum for error code handling
+                    from .exceptions import RegisterError
+
+                    # Handle specific error cases based on error code
+                    if error_code == RegisterError.ALREADY_REGISTERED:
                         logger.debug(f"DID {did[:10]}... already registered with Gateway (received error: {error})")
                         # Not raising an exception here, as this is often expected
                         return response # Return the error response from the gateway
 
-                    elif "DID_QUOTA_EXCEEDED" in error:
+                    elif error_code == RegisterError.DID_QUOTA_EXCEEDED:
                         self._rate_limited_log(
                             f"DID quota exceeded for {did[:10]}... (received error: {error})",
                             level="warning",
@@ -413,12 +772,28 @@ class GatewayClient:
                         )
                         # Raise specific exception for quota exceeded
                         raise QuotaExceededError(f"DID registration quota exceeded (Gateway error: {error})")
+                    
+                    elif error_code == RegisterError.INVALID_DID:
+                        # This is a client-side validation error, should not be retried
+                        raise GatewayResponseError(f"Invalid DID format: {error}", error_code)
+                        
+                    elif error_code == RegisterError.INVALID_DOC_CID:
+                        # This is a client-side validation error, should not be retried
+                        raise GatewayResponseError(f"Invalid document CID: {error}", error_code)
+                        
+                    elif error_code == RegisterError.UNAUTHORIZED:
+                        # Authorization errors are not retryable
+                        raise GatewayResponseError(f"Unauthorized: {error}", error_code)
+                        
+                    elif error_code == RegisterError.INVALID_PAYLOAD:
+                        # Invalid payload errors are not retryable
+                        raise GatewayResponseError(f"Invalid payload: {error}", error_code)
 
                     else:
                         # General error from Gateway - might be retryable depending on gateway logic
                         # For now, treat unknown gateway errors as potentially retryable
-                        logger.warning(f"Gateway returned failure for DID {did[:10]}...: {error}. Retrying (attempt {retry_count+1}/{max_retries+1})...")
-                        last_error = GatewayResponseError(f"Failed to register DID: {error}")
+                        logger.warning(f"Gateway returned failure for DID {did[:10]}...: {error} (code: {error_code}). Retrying (attempt {retry_count+1}/{max_retries+1})...")
+                        last_error = GatewayResponseError(f"Failed to register DID: {error}", error_code)
                         retry_count += 1
                         continue # Go to next retry iteration
 

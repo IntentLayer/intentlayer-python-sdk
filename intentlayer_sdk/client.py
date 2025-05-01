@@ -113,11 +113,10 @@ class IntentClient:
             NetworkError: If the network configuration cannot be loaded
         """
         try:
-            # Respect the INTENT_AUTO_DID environment variable
-            auto_did_env = os.environ.get("INTENT_AUTO_DID", "").lower()
-            if auto_did_env in ("false", "0", "no"):
-                auto_did = False
-                
+            # Respect the INTENT_AUTO_DID environment variable or parameter
+            from .utils import get_auto_did_enabled
+            auto_did = get_auto_did_enabled(auto_did)
+            
             # Get Gateway URL from env var or parameter
             effective_gateway_url = gateway_url or os.environ.get("INTENT_GATEWAY_URL")
             
@@ -158,10 +157,17 @@ class IntentClient:
             # Setup auto-did and identity manager if needed
             if auto_did and hasattr(client, "_identity") and effective_gateway_url:
                 from intentlayer_sdk.identity.registration import IdentityManager
-                client._identity_manager = IdentityManager(
-                    identity=client._identity,
-                    gateway_client=client._gateway_client
-                )
+                
+                # Initialize the identity manager with robust error handling
+                try:
+                    client._identity_manager = IdentityManager(
+                        identity=client._identity,
+                        gateway_client=client._gateway_client
+                    )
+                    client.logger.debug(f"Initialized IdentityManager for DID {client._identity.did[:6]}...")
+                except Exception as e:
+                    client.logger.warning(f"Failed to initialize IdentityManager: {e}")
+                    # Continue without identity manager - will affect auto-registration only
             
             return client
             
@@ -648,11 +654,30 @@ class IntentClient:
             # 0. Ensure DID is registered with Gateway service if we have an identity manager
             if hasattr(self, "_identity_manager"):
                 try:
-                    did_registered = self._identity_manager.ensure_registered()
+                    # Configure schema version from environment if available
+                    schema_version = os.environ.get("INTENT_SCHEMA_VERSION")
+                    if schema_version:
+                        try:
+                            schema_version = int(schema_version)
+                        except ValueError:
+                            self.logger.warning(f"Invalid INTENT_SCHEMA_VERSION: {schema_version}. Using default.")
+                            schema_version = None
+                    
+                    # Get lock strategy from environment
+                    lock_strategy = os.environ.get("INTENT_LOCK_STRATEGY")
+                    redis_url = os.environ.get("INTENT_REDIS_URL")
+                    
+                    # Register DID with Gateway
+                    did_registered = self._identity_manager.ensure_registered(
+                        schema_version=schema_version,
+                        lock_strategy=lock_strategy,
+                        redis_url=redis_url
+                    )
+                    
                     if did_registered:
                         self.logger.info(f"Auto-registered DID with Gateway service")
                 except Exception as e:
-                    # Import at the top of the method to avoid double imports
+                    # Import at the top of the method to avoid circular imports
                     from typing import TYPE_CHECKING
                     if TYPE_CHECKING:
                         from .gateway.exceptions import QuotaExceededError

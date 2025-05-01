@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package intentlayer.v2;
+option go_package = "github.com/IntentLayer/intentlayer-gateway/gen/go/intentlayer/v2;intentlayerv2";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+// —— core types with V2 contract changes —— 
+
+// RegisterError enum defines error codes returned by the DidRegistryV2 contract
+enum RegisterError {
+  UNKNOWN_UNSPECIFIED = 0;
+  DOC_CID_EMPTY = 1;
+  ALREADY_REGISTERED = 2;
+  INVALID_DID = 3;
+  SCHEMA_VERSION_MISMATCH = 4;
+  INVALID_OPERATOR = 5;
+}
+
+message IntentEnvelope {
+  string                         did       = 1;
+  bytes                          cid       = 2;
+  bytes                          signature = 3;
+  uint64                         stake_wei = 4;
+  uint64                         nonce     = 5;
+  google.protobuf.Timestamp      timestamp = 6;
+  reserved 7, 8;
+}
+
+message DidDocument {
+  string                         did     = 1;
+  bytes                          pub_key = 2;
+  string                         org_id  = 3;
+  string                         label   = 4;
+  // New fields for DidRegistryV2
+  google.protobuf.UInt32Value    schema_version = 5; // Nullable to distinguish unset vs 0; represents contract schema version
+  string                         doc_cid = 6;        // IPFS CID for document (stored as bytes32 on-chain)
+                                                      // MUST be a lower-case hex string with exactly 64 hex characters (32 bytes)
+                                                      // May include 0x prefix, which will be removed before validation
+  string                         payload_cid = 7;    // IPFS CID for payload (stored as bytes32 on-chain)
+                                                      // MUST be a lower-case hex string with exactly 64 hex characters (32 bytes) 
+                                                      // May include 0x prefix, which will be removed before validation
+  reserved 8 to 15;                                  // Reserve for future contract bumps
+}
+
+message TxReceipt {
+  string         hash     = 1;
+  uint64         gas_used = 2;
+  bool           success  = 3;  // Authoritative flag; must be false when error_code != UNKNOWN_UNSPECIFIED
+  string         error    = 4 [deprecated = true]; // Deprecated in favor of error_code
+  RegisterError  error_code = 5;  // Contains error code from the contract
+}
+
+// —— wrapper messages for each RPC ——
+
+message SendIntentRequest {
+  IntentEnvelope envelope = 1;
+}
+message SendIntentResponse {
+  TxReceipt receipt = 1;
+}
+
+message StreamIntentsRequest {
+  IntentEnvelope envelope = 1;
+}
+message StreamIntentsResponse {
+  TxReceipt receipt = 1;
+}
+
+message RegisterDidRequest {
+  DidDocument document = 1;
+}
+message RegisterDidResponse {
+  TxReceipt receipt = 1;
+}
+
+message StreamDidsRequest {
+  DidDocument document = 1;
+}
+message StreamDidsResponse {
+  TxReceipt receipt = 1;
+}
+
+// —— service definition —— 
+
+service GatewayService {
+  rpc SendIntent    (SendIntentRequest)    returns (SendIntentResponse);
+  rpc StreamIntents (stream StreamIntentsRequest)  returns (stream StreamIntentsResponse);
+  rpc RegisterDid   (RegisterDidRequest)   returns (RegisterDidResponse);
+  rpc StreamDids    (stream StreamDidsRequest)    returns (stream StreamDidsResponse);
+}

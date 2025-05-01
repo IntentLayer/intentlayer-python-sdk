@@ -1,0 +1,59 @@
+name: Proto Generation Verification
+
+on:
+  push:
+    branches: [ main, feature/*, bug/* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  verify-proto-generation:
+    name: Verify Proto Generation
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ['3.10', '3.11']
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: 1.7.0
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+    
+    - name: Install dependencies
+      run: |
+        poetry install --extras grpc
+    
+    - name: Create build directory
+      run: mkdir -p .build
+    
+    - name: Clean proto files
+      run: poetry run make clean-proto
+    
+    - name: Generate proto files
+      run: poetry run make proto
+    
+    - name: Verify proto stubs
+      run: poetry run make check-proto-stubs
+    
+    - name: Test proto imports
+      run: |
+        poetry run python -c "
+        try:
+            from intentlayer_sdk.gateway.proto import gateway_pb2, gateway_pb2_grpc
+            print('Successfully imported proto modules')
+        except ImportError as e:
+            print(f'Failed to import proto modules: {e}')
+            exit(1)
+        "

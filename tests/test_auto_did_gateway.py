@@ -1,19 +1,93 @@
 """
 Tests for the Auto-DID with Gateway integration.
+
+These tests verify the integration between the Auto-DID feature and the Gateway service.
 """
 import os
 import logging
 import pytest
+import base64
 from unittest.mock import patch, MagicMock
 
 from intentlayer_sdk.identity.registration import IdentityManager, extract_org_id_from_api_key
 from intentlayer_sdk.gateway.exceptions import (
-    AlreadyRegisteredError, QuotaExceededError, GatewayError
+    AlreadyRegisteredError, QuotaExceededError, GatewayError, RegisterError
 )
+from intentlayer_sdk.gateway.client import GatewayClient, DidDocument, TxReceipt
+from intentlayer_sdk.utils import get_auto_did_enabled
 
 
 class TestAutoDidGatewayRegistration:
     """Tests for the auto-DID Gateway registration functionality."""
+    
+    def test_gateway_client_register_with_schema_version(self):
+        """Test registering DID with a specific schema version."""
+        # Create a mock stub
+        mock_stub = MagicMock()
+        mock_stub.RegisterDid.return_value = TxReceipt(
+            hash="0x1234",
+            gas_used=21000,
+            success=True,
+            error="",
+            error_code=RegisterError.UNKNOWN_UNSPECIFIED
+        )
+        
+        # Create a gateway client with the mock stub
+        client = GatewayClient("https://example.com")
+        client.stub = mock_stub
+        
+        # Register DID with schema_version
+        result = client.register_did(
+            did="did:key:test123",
+            pub_key=b"test_key",
+            org_id="test_org",
+            schema_version=2
+        )
+        
+        # Verify the result
+        assert result.success
+        assert result.hash == "0x1234"
+        assert result.gas_used == 21000
+        
+        # Verify the stub was called with the correct parameters
+        mock_stub.RegisterDid.assert_called_once()
+        args, kwargs = mock_stub.RegisterDid.call_args
+        assert len(args) == 1
+        doc = args[0]
+        assert doc.did == "did:key:test123"
+        assert doc.pub_key == b"test_key"
+        assert doc.org_id == "test_org"
+        assert doc.schema_version == 2
+    
+    def test_gateway_client_register_with_doc_cid(self):
+        """Test registering DID with a document CID."""
+        # Create a mock stub
+        mock_stub = MagicMock()
+        mock_stub.RegisterDid.return_value = TxReceipt(
+            hash="0x1234",
+            gas_used=21000,
+            success=True
+        )
+        
+        # Create a gateway client with the mock stub
+        client = GatewayClient("https://example.com")
+        client.stub = mock_stub
+        
+        # Register DID with doc_cid
+        result = client.register_did(
+            did="did:key:test123",
+            pub_key=b"test_key",
+            doc_cid="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        )
+        
+        # Verify the stub was called with the correct parameters
+        mock_stub.RegisterDid.assert_called_once()
+        args, kwargs = mock_stub.RegisterDid.call_args
+        assert len(args) == 1
+        doc = args[0]
+        assert doc.did == "did:key:test123"
+        assert doc.pub_key == b"test_key"
+        assert doc.doc_cid == "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
     
     def test_concurrent_registration(self):
         """Test that concurrent calls only result in one RegisterDid RPC."""
@@ -215,6 +289,86 @@ class TestAutoDidGatewayRegistration:
         
         gateway_client.register_did.assert_called_once()
     
+    def test_identity_manager_with_distributed_lock(self):
+        """Test IdentityManager with distributed lock."""
+        # Mock identity and gateway client
+        identity = MagicMock()
+        identity.did = "did:key:test123"
+        
+        gateway_client = MagicMock()
+        gateway_client.register_did.return_value = MagicMock(success=True)
+        
+        # Create an IdentityManager instance
+        manager = IdentityManager(identity=identity, gateway_client=gateway_client)
+        
+        # Mock the Redis lock
+        mock_redis_lock = MagicMock()
+        mock_redis_lock.acquire.return_value = True
+        
+        # Patch the _get_redis_lock method
+        with patch.object(
+            IdentityManager, 
+            '_get_redis_lock', 
+            return_value=mock_redis_lock
+        ):
+            # Call ensure_registered with redis lock strategy
+            result = manager.ensure_registered(lock_strategy="redis", redis_url="redis://localhost:6379")
+            
+            # Verify the result
+            assert result is True
+            
+            # Verify the lock was acquired and released
+            mock_redis_lock.acquire.assert_called_once()
+            mock_redis_lock.release.assert_called_once()
+            
+            # Verify the gateway client was called with the right parameters
+            gateway_client.register_did.assert_called_once()
+    
+    def test_gateway_client_error_handling(self):
+        """Test error handling in GatewayClient."""
+        # Create a mock stub
+        mock_stub = MagicMock()
+        mock_stub.RegisterDid.return_value = TxReceipt(
+            hash="0x0000000000000000000000000000000000000000000000000000000000000000",
+            gas_used=0,
+            success=False,
+            error="Invalid DID format",
+            error_code=RegisterError.INVALID_DID
+        )
+        
+        # Create a gateway client with the mock stub
+        client = GatewayClient("https://example.com")
+        client.stub = mock_stub
+        
+        # Register DID with invalid format
+        with pytest.raises(GatewayError) as excinfo:
+            client.register_did(
+                did="invalid_did",
+                pub_key=b"test_key"
+            )
+        
+        # Verify the exception details
+        assert "Invalid DID format" in str(excinfo.value)
+        
+        # Test with ALREADY_REGISTERED error
+        mock_stub.RegisterDid.return_value = TxReceipt(
+            hash="0x0000000000000000000000000000000000000000000000000000000000000000",
+            gas_used=0,
+            success=False,
+            error="DID already registered",
+            error_code=RegisterError.ALREADY_REGISTERED
+        )
+        
+        # This should not raise an exception
+        result = client.register_did(
+            did="did:key:already_registered",
+            pub_key=b"test_key"
+        )
+        
+        # Verify the result
+        assert not result.success
+        assert result.error_code == RegisterError.ALREADY_REGISTERED
+    
     def test_intent_client_propagates_quota_exceeded(self):
         """Test that IntentClient properly propagates QuotaExceededError from gateway."""
         from intentlayer_sdk.client import IntentClient
@@ -273,3 +427,32 @@ class TestAutoDidGatewayRegistration:
         # Test with no gateway client
         with pytest.raises(ValueError, match="Gateway client must be provided"):
             IdentityManager(identity=MagicMock(), gateway_client=None)
+            
+    def test_get_auto_did_enabled(self):
+        """Test the get_auto_did_enabled utility function."""
+        # Test with explicit override
+        assert get_auto_did_enabled(True) is True
+        assert get_auto_did_enabled(False) is False
+        
+        # Test with environment variables
+        with patch.dict(os.environ, {"INTENT_AUTO_DID": "false"}):
+            assert get_auto_did_enabled() is False
+            
+        with patch.dict(os.environ, {"INTENT_AUTO_DID": "no"}):
+            assert get_auto_did_enabled() is False
+            
+        with patch.dict(os.environ, {"INTENT_AUTO_DID": "0"}):
+            assert get_auto_did_enabled() is False
+            
+        with patch.dict(os.environ, {"INTENT_AUTO_DID": "true"}):
+            assert get_auto_did_enabled() is True
+            
+        with patch.dict(os.environ, {"INTENT_AUTO_DID": "yes"}):
+            assert get_auto_did_enabled() is True
+            
+        with patch.dict(os.environ, {"INTENT_AUTO_DID": "1"}):
+            assert get_auto_did_enabled() is True
+            
+        # Test default value (should be True)
+        with patch.dict(os.environ, {}, clear=True):
+            assert get_auto_did_enabled() is True

@@ -4,8 +4,9 @@ Utility functions for the IntentLayer SDK.
 import hashlib
 import json
 import logging
+import os
 import warnings
-from typing import Dict, Any, Union
+from typing import Dict, Any, Union, Optional
 
 import base58
 from web3 import Web3
@@ -119,3 +120,28 @@ def ipfs_cid_to_bytes(cid: str, allow_utf8_fallback: bool = False, max_bytes: in
         return result[:max_bytes]
     
     return result
+
+
+def get_auto_did_enabled(override: Optional[bool] = None) -> bool:
+    """
+    Check if the AUTO-DID feature is enabled.
+    
+    Args:
+        override: Override value for the AUTO-DID setting
+        
+    Returns:
+        True if AUTO-DID is enabled, False otherwise
+    """
+    # First check for explicit override
+    if override is not None:
+        return override
+        
+    # Then check environment variable
+    auto_did_env = os.environ.get("INTENT_AUTO_DID", "").lower()
+    if auto_did_env in ("false", "0", "no"):
+        return False
+    if auto_did_env in ("true", "1", "yes"):
+        return True
+        
+    # Default to True (auto-DID enabled)
+    return True

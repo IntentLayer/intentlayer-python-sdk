@@ -28,7 +28,8 @@ dependencies = [
     "appdirs >= 1.4.4",
     "certifi >= 2022.12.7",
     "grpcio (>=1.71.0,<2.0.0)",
-    "protobuf (>=6.30.2,<7.0.0)"
+    "protobuf (>=6.30.2,<7.0.0)",
+    "cachetools >= 5.0.0"
 ]
 
 [project.optional-dependencies]
