@@ -76,11 +76,21 @@ class TestRateLimitCache:
         # Create a client
         client = GatewayClient("https://example.com")
         
+        # Create a timestamp in the past for testing expiration
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        old_time = now - timedelta(seconds=2)  # 2 seconds old
+        future_time = now + timedelta(seconds=60)  # 60 seconds in future
+        
         # Test with our mocked environment
         with patch('intentlayer_sdk.gateway.client._error_log_timestamps', mock_timestamps), \
              patch('intentlayer_sdk.gateway.client.logger', mock_logger), \
-             patch('intentlayer_sdk.gateway.client.TTLCACHE_AVAILABLE', False):
-             
+             patch('intentlayer_sdk.gateway.client.TTLCACHE_AVAILABLE', False), \
+             patch('intentlayer_sdk.gateway.client.datetime') as mock_datetime:
+            
+            # Mock datetime.now() to return specific timestamps
+            mock_datetime.now.return_value = now
+            
             # First log should go through
             client._rate_limited_log("Test message", level="warning", interval=1)
             mock_logger.warning.assert_called_once_with("Test message")
@@ -89,13 +99,30 @@ class TestRateLimitCache:
             # Reset mock
             mock_logger.reset_mock()
             
-            # Second immediate log should be suppressed
+            # Second immediate log should be suppressed (same timestamp)
             client._rate_limited_log("Test message", level="warning", interval=1)
             mock_logger.warning.assert_not_called()  # Log should be suppressed
             
-            # Wait for interval to expire
-            time.sleep(1.1)
+            # Advance time past the interval (mock instead of sleep)
+            mock_datetime.now.return_value = now + timedelta(seconds=1.5)
             
             # Now the log should go through again
             client._rate_limited_log("Test message", level="warning", interval=1)
             mock_logger.warning.assert_called_once_with("Test message")
+            
+            # Test with pre-populated timestamps cache
+            mock_logger.reset_mock()
+            mock_timestamps.clear()
+            # Pre-populate with an expired entry
+            mock_timestamps["warning:expired"] = old_time
+            # Pre-populate with a future entry (shouldn't log)
+            mock_timestamps["warning:future"] = future_time
+            
+            # Try to log the expired entry
+            client._rate_limited_log("expired", level="warning", interval=1)
+            mock_logger.warning.assert_called_once_with("expired")
+            
+            # Try to log the future entry (should be suppressed)
+            mock_logger.reset_mock()
+            client._rate_limited_log("future", level="warning", interval=1)
+            mock_logger.warning.assert_not_called()

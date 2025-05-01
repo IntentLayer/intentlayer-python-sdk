@@ -54,6 +54,11 @@ path = "intentlayer_sdk/networks.json"
 [[tool.poetry.include]]
 path = "intentlayer_sdk/py.typed"
 
+[tool.poetry.scripts]
+proto = "python -m grpc_tools.protoc --proto_path=intentlayer_sdk/gateway/proto --python_out=intentlayer_sdk/gateway/proto --grpc_python_out=intentlayer_sdk/gateway/proto intentlayer_sdk/gateway/proto/gateway.proto"
+clean-proto = "python -c \"import os; files = [os.path.join('intentlayer_sdk/gateway/proto', f) for f in os.listdir('intentlayer_sdk/gateway/proto') if f.endswith('_pb2.py') or f.endswith('_pb2_grpc.py')]; [os.remove(f) for f in files if os.path.isfile(f)]\""
+check-proto = "python -c \"import os, sys; proto_files = [os.path.join('intentlayer_sdk/gateway/proto', f) for f in os.listdir('intentlayer_sdk/gateway/proto') if f.endswith('.proto')]; stub_files = [os.path.join('intentlayer_sdk/gateway/proto', f) for f in os.listdir('intentlayer_sdk/gateway/proto') if f.endswith('_pb2.py') or f.endswith('_pb2_grpc.py')]; proto_time = max([os.path.getmtime(f) for f in proto_files] or [0]); stub_time = min([os.path.getmtime(f) for f in stub_files] or [float('inf')]); sys.exit(1 if not stub_files or proto_time > stub_time else 0)\""
+
 [tool.poetry.group.dev.dependencies]
 click = "^8.1.8"
 pytest = "^7.0.0"
