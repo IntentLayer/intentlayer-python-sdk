@@ -64,7 +64,7 @@ def test_validate_payload():
     """Test the _validate_payload method"""
     
     # Create a client with mocked attributes directly to bypass initialization
-    client = IntentClient.__new__(IntentClient)  # Skip __init__
+    client = object.__new__(IntentClient)  # Skip __init__
     client.logger = MagicMock()
     
     # Test with a valid payload
@@ -110,7 +110,7 @@ def test_sanitize_payload():
     """Test the _sanitize_payload method"""
     
     # Create a client with mocked attributes directly to bypass initialization
-    client = IntentClient.__new__(IntentClient)  # Skip __init__
+    client = object.__new__(IntentClient)  # Skip __init__
     client.logger = MagicMock()
     
     # Test with non-dict payload

@@ -1,0 +1,57 @@
+name: Proto Integrity Check
+
+on:
+  push:
+    branches: [main, "feature/*", "bug/*"]
+    paths: |
+      intentlayer_sdk/gateway/proto/**
+      Makefile
+      .github/workflows/proto-integrity.yml
+  pull_request:
+    branches: [main]
+    paths: |
+      intentlayer_sdk/gateway/proto/**
+      Makefile
+      .github/workflows/proto-integrity.yml
+
+jobs:
+  verify-proto-generation:
+    runs-on: ubuntu-latest          
+    strategy:
+      matrix:
+        python-version: ['3.11']    
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'poetry'           
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.8.3            
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install deps
+        run: poetry install --extras grpc
+
+      - name: Clean proto files
+        run: poetry run make clean-proto
+
+      - name: Generate proto files
+        run: poetry run make proto
+
+      - name: Verify proto stubs
+        run: poetry run make check-proto-stubs
+
+      - name: Smoke-import generated stubs
+        run: |
+          poetry run python - <<'PY'
+          from intentlayer_sdk.gateway.proto import gateway_pb2, gateway_pb2_grpc
+          print("Proto stubs import OK")
+          PY

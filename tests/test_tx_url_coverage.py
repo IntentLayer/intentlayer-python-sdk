@@ -8,8 +8,16 @@ from web3 import Web3
 from intentlayer_sdk import IntentClient
 from tests.conftest import TEST_RPC_URL, TEST_PINNER_URL, TEST_CONTRACT, TEST_PRIV_KEY
 
-def test_tx_url_with_bytes():
-    """Test tx_url with bytes input."""
+@pytest.mark.parametrize(
+    "tx_hash_input, test_id, expected_in_url", 
+    [
+        (bytes.fromhex("1234567890abcdef" * 4), "bytes", "0x1234567890abcdef"),
+        ("1234567890abcdef" * 4, "hex_without_prefix", "0x1234567890abcdef"),
+        ("0x" + "1234567890abcdef" * 4, "hex_with_prefix", "0x1234567890abcdef")
+    ]
+)
+def test_tx_url_input_formats(tx_hash_input, test_id, expected_in_url):
+    """Test tx_url with different input formats."""
     # Create client with mocked configs
     client = IntentClient(
         rpc_url=TEST_RPC_URL,
@@ -17,41 +25,17 @@ def test_tx_url_with_bytes():
         signer=MagicMock(),
         recorder_address=TEST_CONTRACT
     )
-    # Test with bytes input
-    tx_hash = bytes.fromhex("1234567890abcdef" * 4)
-    url = client.tx_url(tx_hash)
-    assert "0x1234567890abcdef" in url
+    
+    # Test with provided input format
+    url = client.tx_url(tx_hash_input)
+    
+    # Common assertions
     assert url.startswith("https://")
-
-def test_tx_url_with_hex_without_prefix():
-    """Test tx_url with hex string without 0x prefix."""
-    # Create client with mocked configs
-    client = IntentClient(
-        rpc_url=TEST_RPC_URL,
-        pinner_url=TEST_PINNER_URL,
-        signer=MagicMock(),
-        recorder_address=TEST_CONTRACT
-    )
-    # Test with hex string without 0x prefix
-    tx_hash = "1234567890abcdef" * 4
-    url = client.tx_url(tx_hash)
-    assert url.startswith("https://")
-    assert "0x1234567890abcdef" in url
-
-def test_tx_url_with_hex_with_prefix():
-    """Test tx_url with hex string with 0x prefix."""
-    # Create client with mocked configs
-    client = IntentClient(
-        rpc_url=TEST_RPC_URL,
-        pinner_url=TEST_PINNER_URL,
-        signer=MagicMock(),
-        recorder_address=TEST_CONTRACT
-    )
-    # Test with hex string with 0x prefix
-    tx_hash = "0x" + "1234567890abcdef" * 4
-    url = client.tx_url(tx_hash)
-    assert url.startswith("https://")
-    assert tx_hash in url
+    assert expected_in_url in url
+    
+    # Format-specific assertions
+    if test_id == "hex_with_prefix":
+        assert tx_hash_input in url  # The exact hash should be in the URL
 
 def test_tx_url_network_specific():
     """Test tx_url with different network names."""

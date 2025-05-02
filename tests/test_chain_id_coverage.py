@@ -8,74 +8,50 @@ from intentlayer_sdk import IntentClient
 from intentlayer_sdk.exceptions import NetworkError
 from tests.conftest import TEST_RPC_URL, TEST_PINNER_URL, TEST_CONTRACT, TEST_PRIV_KEY
 
-def test_assert_chain_id_no_expected_id():
-    """Test assert_chain_id when no expected chain ID is set."""
+@pytest.mark.parametrize(
+    "expected_chain_id, actual_chain_id, test_id, expected_result", 
+    [
+        (None, None, "no_expected_id", "warning"),
+        (11155111, 11155111, "matching", "pass"),
+        (11155111, 1, "mismatch", "error")
+    ]
+)
+def test_assert_chain_id(expected_chain_id, actual_chain_id, test_id, expected_result):
+    """Test assert_chain_id with different chain ID scenarios."""
     # Setup
     client = IntentClient(
         rpc_url=TEST_RPC_URL,
         pinner_url=TEST_PINNER_URL,
         signer=MagicMock(),
         recorder_address=TEST_CONTRACT,
-        expected_chain_id=None  # Explicitly set to None
+        expected_chain_id=expected_chain_id
     )
     
-    # Create a logger mock to capture warnings
+    # Create a logger mock to capture warnings if needed
     mock_logger = MagicMock()
     client.logger = mock_logger
     
-    # Test
-    client.assert_chain_id()
+    # Mock web3 instance if needed
+    if actual_chain_id is not None:
+        mock_w3 = MagicMock()
+        mock_w3.eth.chain_id = actual_chain_id
+        client.w3 = mock_w3
     
-    # Verify
-    mock_logger.warning.assert_called_once()
-    assert "No expected chain ID set" in mock_logger.warning.call_args[0][0]
-
-def test_assert_chain_id_matching():
-    """Test assert_chain_id when chain IDs match."""
-    # Setup
-    expected_chain_id = 11155111  # Sepolia testnet
-    
-    client = IntentClient(
-        rpc_url=TEST_RPC_URL,
-        pinner_url=TEST_PINNER_URL,
-        signer=MagicMock(),
-        recorder_address=TEST_CONTRACT,
-        expected_chain_id=expected_chain_id
-    )
-    
-    # Mock web3 instance
-    mock_w3 = MagicMock()
-    mock_w3.eth.chain_id = expected_chain_id
-    client.w3 = mock_w3
-    
-    # Test - should not raise an exception
-    client.assert_chain_id()
-
-def test_assert_chain_id_mismatch():
-    """Test assert_chain_id when chain IDs do not match."""
-    # Setup
-    expected_chain_id = 11155111  # Sepolia testnet
-    actual_chain_id = 1  # Mainnet
-    
-    client = IntentClient(
-        rpc_url=TEST_RPC_URL,
-        pinner_url=TEST_PINNER_URL,
-        signer=MagicMock(),
-        recorder_address=TEST_CONTRACT,
-        expected_chain_id=expected_chain_id
-    )
-    
-    # Mock web3 instance
-    mock_w3 = MagicMock()
-    mock_w3.eth.chain_id = actual_chain_id
-    client.w3 = mock_w3
-    
-    # Set network name
-    client._network_name = "test-network"
+    # Set network name for error case
+    if test_id == "mismatch":
+        client._network_name = "test-network"
     
     # Test
-    with pytest.raises(NetworkError, match="Chain ID mismatch"):
+    if expected_result == "warning":
         client.assert_chain_id()
+        mock_logger.warning.assert_called_once()
+        assert "No expected chain ID set" in mock_logger.warning.call_args[0][0]
+    elif expected_result == "pass":
+        # Should not raise an exception
+        client.assert_chain_id()
+    elif expected_result == "error":
+        with pytest.raises(NetworkError, match="Chain ID mismatch"):
+            client.assert_chain_id()
 
 def test_assert_chain_id_w3_error():
     """Test assert_chain_id when web3 call raises an exception."""

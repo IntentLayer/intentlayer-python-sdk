@@ -3,6 +3,7 @@ Integration tests for the IntentLayer SDK.
 
 These tests verify the complete user workflows and use realistic test doubles.
 """
+import os
 import pytest
 import time
 import json
@@ -231,7 +232,7 @@ class TestIntentWorkflow:
         This tests error paths a user might encounter.
         """
         # Create a simpler client with just enough to test validation
-        client = IntentClient.__new__(IntentClient)  # Create instance without calling __init__
+        client = object.__new__(IntentClient)  # Create instance without calling __init__
         
         # Manually set required attributes for validation
         client.logger = MagicMock()
@@ -273,7 +274,7 @@ class TestIntentWorkflow:
             bytes.fromhex("not-a-valid-hex-string")
                 
         # 3. Test: No contract address
-        no_contract_client = IntentClient.__new__(IntentClient)
+        no_contract_client = object.__new__(IntentClient)
         no_contract_client.recorder_contract = None
         no_contract_client.logger = MagicMock()
         
@@ -559,3 +560,70 @@ class TestBlockchainInteractions:
         
         # Restore original function
         client.w3.eth.wait_for_transaction_receipt = original_wait
+
+
+class TestAutoDIDWithGateway:
+    """Test the auto-DID feature with Gateway integration."""
+    
+    @pytest.mark.skip(reason="Only run manually with proper environment variables")
+    def test_auto_did_gateway_integration(self):
+        """
+        Test that a client with auto_did=True automatically registers with Gateway.
+        
+        Note: This test requires proper environment variables to be set:
+          - INTENT_GATEWAY_URL: URL to a live Gateway service
+          - INTENT_API_KEY: Valid API key with JWT org_id claim
+        """
+        # Skip if no gateway URL is provided
+        if not os.environ.get("INTENT_GATEWAY_URL"):
+            pytest.skip("Skipping test without INTENT_GATEWAY_URL")
+            
+        # Create client with auto_did and gateway integration
+        client = IntentClient.from_network(
+            network="zksync-era-sepolia",
+            pinner_url=TEST_PINNER_URL,
+            # No signer provided - should auto-create DID
+        )
+        
+        # Verify identity was created
+        assert hasattr(client, "_identity")
+        assert client._identity.did.startswith("did:key:")
+        
+        # Verify gateway client and identity manager were initialized
+        assert hasattr(client, "_gateway_client")
+        assert hasattr(client, "_identity_manager")
+        
+        # Create a test envelope using auto-generated DID
+        envelope = create_envelope(
+            prompt="Auto-DID Gateway integration test",
+            model_id="test-model",
+            tool_id="test-tool",
+            did=client._identity.did,
+            private_key=None,  # Use auto-DID's key
+            stake_wei=client._identity_manager.min_stake_wei
+        )
+        
+        # Create payload
+        payload = {
+            "envelope": envelope.model_dump(),
+            "prompt": "Auto-DID Gateway integration test",
+        }
+        
+        # Mock IPFS and blockchain calls to avoid actual transactions
+        with patch.object(client, 'pin_to_ipfs', return_value="QmTestCid"), \
+             patch.object(client.w3.eth, 'send_raw_transaction', return_value=b'0xtx_hash'), \
+             patch.object(client.w3.eth, 'wait_for_transaction_receipt', return_value={
+                'transactionHash': b'0xtx_hash',
+                'blockNumber': 12345,
+                'blockHash': '0xabcdef1234567890',
+                'status': 1
+             }):
+            
+            # Send intent - should trigger DID registration with Gateway
+            receipt = client.send_intent(
+                envelope_hash=envelope.hash(),
+                payload_dict=payload
+            )
+            
+            # Verify we got a receipt (meaning the flow completed)
+            assert 'transactionHash' in receipt

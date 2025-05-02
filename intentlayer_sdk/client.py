@@ -4,10 +4,11 @@ IntentClient - Main client for the IntentLayer protocol.
 import json
 import hashlib
 import logging
+import os
 import time
 import urllib.parse
 from inspect import signature
-from typing import Dict, Any, Optional, Union, List, cast
+from typing import Dict, Any, Optional, Union, List, Tuple, cast
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -83,11 +84,13 @@ class IntentClient:
         cls,
         network: str,
         pinner_url: str,
-        signer: Union[Signer, str],
+        signer: Optional[Union[Signer, str]] = None,
         rpc_url: Optional[str] = None,
         retry_count: int = 3,
         timeout: int = 30,
         logger: Optional[logging.Logger] = None,
+        auto_did: bool = True,
+        gateway_url: Optional[str] = None,
     ) -> "IntentClient":
         """
         Create an IntentClient from a network configuration.
@@ -95,11 +98,13 @@ class IntentClient:
         Args:
             network: Network name from networks.json (e.g., "zksync-era-sepolia")
             pinner_url: URL of the IPFS pinning service
-            signer: Either a Signer instance or a private key string
+            signer: Either a Signer instance or a private key string (optional with auto_did=True)
             rpc_url: Optional RPC URL override
             retry_count: Number of retries for HTTP requests
             timeout: Timeout in seconds for HTTP requests
             logger: Optional logger instance
+            auto_did: Whether to automatically create and use DID identity (default: True)
+            gateway_url: URL of the Gateway service for DID registration
             
         Returns:
             Configured IntentClient instance
@@ -108,6 +113,13 @@ class IntentClient:
             NetworkError: If the network configuration cannot be loaded
         """
         try:
+            # Respect the INTENT_AUTO_DID environment variable or parameter
+            from .utils import get_auto_did_enabled
+            auto_did = get_auto_did_enabled(auto_did)
+            
+            # Get Gateway URL from env var or parameter
+            effective_gateway_url = gateway_url or os.environ.get("INTENT_GATEWAY_URL")
+            
             # Get network configuration
             net_config = NetworkConfig.get_network(network)
             
@@ -128,11 +140,34 @@ class IntentClient:
                 retry_count=retry_count,
                 timeout=timeout,
                 logger=logger,
+                auto_did=auto_did,
             )
             
             # Store network info for chain ID validation
             client._network_name = network
             client._expected_chain_id = int(net_config["chainId"])
+            
+            # Initialize Gateway client if URL is provided
+            if effective_gateway_url:
+                # Import here to prevent circular imports
+                from intentlayer_sdk.gateway import get_gateway_client
+                api_key = os.environ.get("INTENT_API_KEY")
+                client._gateway_client = get_gateway_client(effective_gateway_url, api_key=api_key)
+                
+            # Setup auto-did and identity manager if needed
+            if auto_did and hasattr(client, "_identity") and effective_gateway_url:
+                from intentlayer_sdk.identity.registration import IdentityManager
+                
+                # Initialize the identity manager with robust error handling
+                try:
+                    client._identity_manager = IdentityManager(
+                        identity=client._identity,
+                        gateway_client=client._gateway_client
+                    )
+                    client.logger.debug(f"Initialized IdentityManager for DID {client._identity.did[:6]}...")
+                except Exception as e:
+                    client.logger.warning(f"Failed to initialize IdentityManager: {e}")
+                    # Continue without identity manager - will affect auto-registration only
             
             return client
             
@@ -143,8 +178,8 @@ class IntentClient:
         self,
         rpc_url: str,
         pinner_url: str,
-        signer: Signer,
-        recorder_address: str,
+        signer: Optional[Signer] = None,
+        recorder_address: str = "",
         did_registry_address: Optional[str] = None,
         min_stake_wei: Optional[int] = None,
         *,
@@ -152,6 +187,7 @@ class IntentClient:
         retry_count: int = 3,
         timeout: int = 30,
         logger: Optional[logging.Logger] = None,
+        auto_did: bool = False
     ):
         """
         Initialize the IntentClient.
@@ -159,7 +195,7 @@ class IntentClient:
         Args:
             rpc_url: Ethereum RPC URL
             pinner_url: IPFS pinning service URL
-            signer: Signer instance for signing transactions
+            signer: Signer instance for signing transactions (optional if auto_did=True)
             recorder_address: IntentRecorder contract address
             did_registry_address: DIDRegistry contract address (optional)
             min_stake_wei: Manual override for minimum stake (auto-queried if None)
@@ -167,6 +203,7 @@ class IntentClient:
             retry_count: Number of retries for HTTP requests
             timeout: Timeout in seconds for HTTP requests
             logger: Optional logger instance
+            auto_did: Whether to automatically create and use a DID
             
         Note:
             It's strongly recommended to provide expected_chain_id to prevent 
@@ -184,7 +221,7 @@ class IntentClient:
 
         self.rpc_url = rpc_url
         self.pinner_url = pinner_url.rstrip("/")
-        self.recorder_address = Web3.to_checksum_address(recorder_address)
+        self.recorder_address = Web3.to_checksum_address(recorder_address) if recorder_address else ""
         self.did_registry_address = Web3.to_checksum_address(did_registry_address) if did_registry_address else None
         self.logger = logger or logging.getLogger(__name__)
         self._network_name = None
@@ -200,15 +237,33 @@ class IntentClient:
         except Exception:
             self._default_gas_price = None
 
-        # Ensure signer is never None
-        if signer is None:
-            raise ValueError("signer must be provided")
+        # Create auto-DID if needed
+        if auto_did:
+            try:
+                from intentlayer_sdk.identity import get_or_create_did
+                identity = get_or_create_did(auto=True)
+                self._identity = identity
+                # Use provided signer if available, otherwise use the identity's signer
+                if signer is None:
+                    signer = identity.signer
+                    self.logger.info(f"Created auto-DID {identity.did[:10]}...")
+            except ImportError:
+                self.logger.warning("Identity module not available, cannot create auto-DID")
+                if not signer:
+                    raise ValueError("signer must be provided when auto_did is unavailable")
+        
+        # Ensure signer is not None when recorder_address is provided
+        if recorder_address and signer is None:
+            raise ValueError("signer must be provided when recorder_address is set")
+            
         self.signer = signer
 
-        # Contract binding
-        self.recorder_contract = self.w3.eth.contract(
-            address=self.recorder_address, abi=self.INTENT_RECORDER_ABI
-        )
+        # Contract binding (if address provided)
+        self.recorder_contract = None
+        if self.recorder_address:
+            self.recorder_contract = self.w3.eth.contract(
+                address=self.recorder_address, abi=self.INTENT_RECORDER_ABI
+            )
         
         # DID registry contract (if address provided)
         self.did_registry_contract = None
@@ -453,7 +508,7 @@ class IntentClient:
             self.logger.error(f"Unexpected error in DID registration: {e}")
             raise TransactionError(f"DID registration failed: {e}")
 
-    def resolve_did(self, did: str) -> tuple[str, bool]:
+    def resolve_did(self, did: str) -> Tuple[str, bool]:
         """
         Resolve a DID to its associated Ethereum address and active status.
         
@@ -568,10 +623,11 @@ class IntentClient:
         Send an intent to be recorded on-chain.
         
         This method:
-        1. Validates the payload format
-        2. Pins the payload to IPFS
-        3. Records the intent on-chain with the envelope hash and IPFS CID
-        4. Optionally waits for transaction confirmation
+        1. Ensures DID is registered with Gateway if auto_did=True
+        2. Validates the payload format
+        3. Pins the payload to IPFS
+        4. Records the intent on-chain with the envelope hash and IPFS CID
+        5. Optionally waits for transaction confirmation
         
         Args:
             envelope_hash: Hash of the envelope (bytes32 or hex string)
@@ -595,6 +651,49 @@ class IntentClient:
         self.assert_chain_id()
         
         try:
+            # 0. Ensure DID is registered with Gateway service if we have an identity manager
+            if hasattr(self, "_identity_manager"):
+                try:
+                    # Configure schema version from environment if available, default to 2
+                    schema_version = os.environ.get("INTENT_SCHEMA_VERSION")
+                    if schema_version:
+                        try:
+                            schema_version = int(schema_version)
+                        except ValueError:
+                            self.logger.warning(f"Invalid INTENT_SCHEMA_VERSION: {schema_version}. Using default.")
+                            schema_version = 2
+                    else:
+                        schema_version = 2
+                    
+                    # Get lock strategy from environment
+                    lock_strategy = os.environ.get("INTENT_LOCK_STRATEGY")
+                    redis_url = os.environ.get("INTENT_REDIS_URL")
+                    
+                    # Register DID with Gateway
+                    did_registered = self._identity_manager.ensure_registered(
+                        schema_version=schema_version,
+                        lock_strategy=lock_strategy,
+                        redis_url=redis_url
+                    )
+                    
+                    if did_registered:
+                        self.logger.info(f"Auto-registered DID with Gateway service")
+                except Exception as e:
+                    # Import at the top of the method to avoid circular imports
+                    from typing import TYPE_CHECKING
+                    if TYPE_CHECKING:
+                        from .gateway.exceptions import QuotaExceededError
+                    else:
+                        from .gateway.exceptions import QuotaExceededError
+                    
+                    # Specifically handle quota exceeded errors
+                    if isinstance(e, QuotaExceededError):
+                        self.logger.error(f"DID registration quota exceeded: {e}")
+                        raise
+                    else:
+                        # Log but don't fail for other errors - Gateway registration is an enhancement
+                        self.logger.warning(f"Failed to auto-register DID with Gateway: {e}")
+            
             # 1. Validate payload
             self._validate_payload(payload_dict)
             
@@ -715,8 +814,16 @@ class IntentClient:
             # re-raise known exceptions including DID-specific errors
             raise
         except Exception as e:
-            self.logger.error(f"Unexpected send error: {e}")
-            raise TransactionError(f"Transaction failed: {e}")
+            # Import here to avoid circular imports at module level
+            from .gateway.exceptions import QuotaExceededError
+            
+            # Use proper instance check for QuotaExceededError
+            if isinstance(e, QuotaExceededError):
+                raise
+            # Handle all other unexpected errors
+            else:
+                self.logger.error(f"Unexpected send error: {e}")
+                raise TransactionError(f"Transaction failed: {e}")
     
     # No aliases - using clean API
 
@@ -798,6 +905,11 @@ class IntentClient:
             
         Returns:
             Sanitized payload for logging
+            
+        Note:
+            This function only redacts content but preserves the length of prompt 
+            strings for metrics purposes. If your threat model is concerned with 
+            information leakage, be aware that prompt length is still visible.
         """
         if not isinstance(payload, dict):
             return {"type": str(type(payload))}

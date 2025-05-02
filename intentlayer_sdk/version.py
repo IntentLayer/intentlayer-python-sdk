@@ -6,7 +6,7 @@ import pathlib
 import tomli
 
 # Default fallback version if metadata and file lookups fail
-_DEFAULT_VERSION = "0.3.0"
+_DEFAULT_VERSION = "0.5.0"
 
 try:
     # Attempt to read version from installed package metadata

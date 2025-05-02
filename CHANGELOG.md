@@ -5,6 +5,55 @@ All notable changes to the IntentLayer Python SDK will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-05-01
+
+### Added
+- Transport layer abstraction for Gateway client to improve modularity
+- Created GatewayTransport base class with Protocol Buffers implementation
+- Thread-safe rate-limited logging with proper locking mechanisms
+- Standardized JWT handling across different environments
+- Windows compatibility for proto generation with platform-independent commands
+- Redis-based distributed locking for multi-node deployments
+- Improved error handling and retry logic for Gateway operations
+
+### Changed
+- **BREAKING:** Gateway now requires schema version 2 for all DID registrations
+- **BREAKING:** V1 Protocol support has been removed
+- **BREAKING:** Now requires gRPC dependencies for Gateway integration (via pip install intentlayer-sdk[grpc])
+- Updated documentation and examples for V2-only protocol support
+- Enhanced cross-platform compatibility for development workflows
+- Improved thread safety across the codebase
+
+### Fixed
+- Enhanced thread safety in _rate_limited_log with proper locking
+- Made JWT unsafe algorithm handling consistent across environment tiers
+- Adjusted TTLCache test to avoid time.sleep() dependencies
+- Added Windows compatibility for proto generation
+- Fixed Makefile for cross-platform compatibility
+- Removed runtime pip install calls from build process
+- Improved CI/CD pipeline for better verification across platforms
+
+
+## [0.4.0] - 2025-04-28
+
+### Added
+- Identity module for DID and key management
+- Automatic DID generation with did:key method
+- Secure key storage with encryption using OS keyring
+- New API methods: `get_or_create_did()`, `create_new_identity()`, `delete_local()`
+- Support for auto_did in IntentClient.from_network
+- New example showcasing the automatic DID feature
+
+### Fixed
+- Proper multicodec encoding in did:key generation
+- Improved Ethereum key derivation from Ed25519 keys using proper modular arithmetic
+- Secure encryption with nacl.SecretBox storing full encrypted payload
+- Metadata storage outside of encrypted content for better identity sorting
+- Added documentation about Windows permission limitations
+- Fixed import of Ed25519PrivateKey for type annotations
+- Improved file locking with non-blocking locks and exponential backoff
+- Enhanced test fixtures with proper encryption for better CI experience
+
 ## [0.3.0] - 2025-04-27
 
 ### Added
