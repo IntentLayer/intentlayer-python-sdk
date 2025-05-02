@@ -110,7 +110,7 @@ class TestAutoDidGatewayRegistration:
         
         # Mock gateway client that counts calls
         class MockGatewayClient:
-            def register_did(self, did, pub_key=None, org_id=None, schema_version=None):
+            def register_did(self, did, pub_key=None, org_id=None, schema_version=2):
                 nonlocal call_counter
                 # Increment the call counter in a thread-safe way
                 with counter_lock:

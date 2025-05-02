@@ -65,7 +65,7 @@ class GatewayTransport(ABC):
         pub_key: Optional[bytes] = None,
         org_id: Optional[str] = None,
         label: Optional[str] = None,
-        schema_version: Optional[int] = None,
+        schema_version: Optional[int] = 2,
         doc_cid: Optional[str] = None,
         payload_cid: Optional[str] = None,
         timeout: Optional[int] = None,

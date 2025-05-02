@@ -249,7 +249,7 @@ class IdentityManager:
         force: bool = False,
         lock_strategy: str = None,
         redis_url: str = None,
-        schema_version: Optional[int] = None
+        schema_version: Optional[int] = 2
     ) -> bool:
         """
         Ensure the identity's DID is registered with the Gateway service.
