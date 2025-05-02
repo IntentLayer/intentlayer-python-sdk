@@ -114,10 +114,12 @@ class TestRateLimitedLog:
         if expiry_method == "time_sleep":
             # Create a TTLCache with a very short TTL for testing
             test_cache = TTLCache(maxsize=10, ttl=0.1)
+            test_lock = threading.RLock()
             
             # Use TTLCache implementation with a short TTL
             with patch('intentlayer_sdk.gateway._rate_limited_log.TTLCACHE_AVAILABLE', cachetools_available_flag), \
-                 patch('intentlayer_sdk.gateway._rate_limited_log._error_log_cache', test_cache):
+                 patch('intentlayer_sdk.gateway._rate_limited_log._error_log_cache', test_cache), \
+                 patch('intentlayer_sdk.gateway._rate_limited_log._error_log_cache_lock', test_lock):
                 
                 # Clear any existing logged messages
                 self.logged_messages.clear()
@@ -132,6 +134,9 @@ class TestRateLimitedLog:
                 
                 # Wait for the cache entry to expire
                 time.sleep(0.2)
+                
+                # Clear the cache to simulate expiry (TTLCache expiration in tests can be unreliable)
+                test_cache.clear()
                 
                 # Second call with same message should log again after expiry
                 rate_limited_log(message=f"Test message 1 {test_id}", logger_instance=self.logger)

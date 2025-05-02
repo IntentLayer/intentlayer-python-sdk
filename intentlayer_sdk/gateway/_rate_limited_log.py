@@ -9,6 +9,9 @@ import threading
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, Callable
 
+# Configure logger
+logger = logging.getLogger(__name__)
+
 # Import TTLCache for rate limiting if available
 try:
     from cachetools import TTLCache
@@ -16,19 +19,26 @@ try:
 except ImportError:
     TTLCACHE_AVAILABLE = False
 
-# Configure logger
-logger = logging.getLogger(__name__)
+# Global rate limiting variables to be initialized lazily
+_error_log_cache = None
+_error_log_cache_lock = None
+_error_log_timestamps = None
+_error_log_timestamps_lock = None
 
-# Global rate limiting cache with thread safety
-if TTLCACHE_AVAILABLE:
-    # Use TTLCache with a maximum of 100 entries and 1 hour TTL
-    _error_log_cache = TTLCache(maxsize=100, ttl=3600)
-    _error_log_cache_lock = threading.RLock()  # Thread safety for the cache
-else:
-    # Fallback to simple dict if TTLCache is not available
-    logger.info("cachetools.TTLCache not available, using simple dict for rate limiting")
-    _error_log_timestamps: Dict[str, datetime] = {}
-    _error_log_timestamps_lock = threading.RLock()  # Thread safety for the dict
+# Initialize the rate limiting globals
+def _init_rate_limiting():
+    global _error_log_cache, _error_log_cache_lock, _error_log_timestamps, _error_log_timestamps_lock
+    
+    # Only initialize if not already done
+    if TTLCACHE_AVAILABLE and _error_log_cache is None:
+        # Use TTLCache with a maximum of 100 entries and 1 hour TTL
+        _error_log_cache = TTLCache(maxsize=100, ttl=3600)
+        _error_log_cache_lock = threading.RLock()  # Thread safety for the cache
+    elif not TTLCACHE_AVAILABLE and _error_log_timestamps is None:
+        # Fallback to simple dict if TTLCache is not available
+        logger.info("cachetools.TTLCache not available, using simple dict for rate limiting")
+        _error_log_timestamps = {}
+        _error_log_timestamps_lock = threading.RLock()  # Thread safety for the dict
 
 
 def rate_limited_log(
@@ -46,6 +56,9 @@ def rate_limited_log(
         interval: Minimum interval between logs in seconds
         logger_instance: Logger to use (defaults to module logger)
     """
+    # Initialize rate limiting if needed
+    _init_rate_limiting()
+    
     # Use the provided logger or default to module logger
     log_instance = logger_instance or logger
     
