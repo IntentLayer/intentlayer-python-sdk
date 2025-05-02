@@ -33,7 +33,7 @@ except ImportError:
 
 # Import test server
 if grpc_testing_available and proto_available:
-    from .test_grpc_server import GrpcTestServer, requires_grpc_testing
+    from tests.gateway.test_grpc_server import GrpcTestServer, requires_grpc_testing
     from intentlayer_sdk.gateway.client import GatewayClient, DidDocument
     from intentlayer_sdk.gateway.exceptions import (
         GatewayError, GatewayConnectionError, GatewayTimeoutError,

@@ -251,7 +251,12 @@ class GrpcTestServer:
         Returns:
             A grpc_testing test channel connected to this test server
         """
-        return self.test_server.channel()
+        # Different versions of grpc_testing have different APIs
+        if hasattr(self.test_server, 'channel'):
+            return self.test_server.channel()
+        else:
+            # For newer grpc_testing versions
+            return self.test_server
     
     def get_stub(self):
         """

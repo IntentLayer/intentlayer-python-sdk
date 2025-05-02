@@ -30,7 +30,7 @@ except ImportError:
 
 # Only define fixtures if dependencies are available
 if grpc_testing_available and proto_available:
-    from .test_grpc_server import GrpcTestServer
+    from tests.gateway.test_grpc_server import GrpcTestServer
     from intentlayer_sdk.gateway.client import GatewayClient
     from intentlayer_sdk.gateway.proto_transport import ProtoTransport
 

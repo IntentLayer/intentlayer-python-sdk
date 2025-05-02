@@ -38,7 +38,7 @@ jobs:
         
     - name: Run gRPC integration tests
       run: |
-        poetry run pytest tests/gateway/test_grpc_integration.py -v --cov=intentlayer_sdk.gateway --cov-branch --cov-report=xml
+        poetry run pytest tests/gateway/test_mock_integration.py -v --cov=intentlayer_sdk.gateway --cov-branch --cov-report=xml
         
     - name: Upload integration test coverage reports to Codecov
       uses: codecov/codecov-action@v5
