@@ -37,24 +37,17 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
-      - name: Change working directory
-        run: cd ./intentlayer_sdk
-
       - name: Install deps
         run: poetry install --extras grpc
-        working-directory: ./intentlayer_sdk
 
       - name: Clean proto files
         run: poetry run make clean-proto
-        working-directory: ./intentlayer_sdk
 
       - name: Generate proto files
         run: poetry run make proto
-        working-directory: ./intentlayer_sdk
 
       - name: Verify proto stubs
         run: poetry run make check-proto-stubs
-        working-directory: ./intentlayer_sdk
 
       - name: Smoke-import generated stubs
         run: |
@@ -62,4 +55,3 @@ jobs:
           from intentlayer_sdk.gateway.proto import gateway_pb2, gateway_pb2_grpc
           print("Proto stubs import OK")
           PY
-        working-directory: ./intentlayer_sdk
