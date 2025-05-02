@@ -282,7 +282,7 @@ class GatewayClient:
     Client for interacting with the IntentLayer Gateway service using V2 protocol.
 
     This client handles DID registration and intent submission via gRPC.
-    Note: As of v0.5.0, only V2 protocol is supported. V1 protocol support has been removed entirely.
+    Note: As of v0.5.0, only V2 protocol is supported.
     """
 
     def __init__(
