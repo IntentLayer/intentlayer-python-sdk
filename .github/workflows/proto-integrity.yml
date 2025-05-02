@@ -43,13 +43,13 @@ jobs:
       run: mkdir -p .build
     
     - name: Clean proto files
-      run: poetry run make clean-proto
+      run: make clean-proto
     
     - name: Generate proto files
-      run: poetry run make proto
+      run: make proto
     
     - name: Verify proto stubs
-      run: poetry run make check-proto-stubs
+      run: make check-proto-stubs
     
     - name: Test proto imports
       run: |

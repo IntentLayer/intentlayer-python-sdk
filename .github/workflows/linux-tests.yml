@@ -45,15 +45,15 @@ jobs:
         working-directory: ./intentlayer_sdk
 
       - name: Clean proto files
-        run: poetry run make clean-proto
+        run: make clean-proto
         working-directory: ./intentlayer_sdk
 
       - name: Generate proto files
-        run: poetry run make proto
+        run: make proto
         working-directory: ./intentlayer_sdk
 
       - name: Verify proto stubs
-        run: poetry run make check-proto-stubs
+        run: make check-proto-stubs
         working-directory: ./intentlayer_sdk
 
       - name: Smoke-import generated stubs

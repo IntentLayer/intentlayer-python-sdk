@@ -48,11 +48,6 @@ grpc = [
 [tool.poetry.scripts]
 intent-cli = "intent_cli.__main__:app"
 
-# your “make”-style shortcuts
-proto       = "python -m grpc_tools.protoc --proto_path=intentlayer_sdk/gateway/proto --python_out=intentlayer_sdk/gateway/proto --grpc_python_out=intentlayer_sdk/gateway/proto intentlayer_sdk/gateway/proto/gateway.proto"
-clean-proto = "python -c \"import os; files=[...];[os.remove(f) for f in files]\""
-check-proto = "python -c \"import os,sys; proto_files=[...]; sys.exit(...)\""
-
 [tool.poetry.group.dev.dependencies]
 click           = "^8.1.8"
 pytest          = "^7.0.0"
