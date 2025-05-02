@@ -6,7 +6,7 @@ This document outlines the approach used for integration testing in the IntentLa
 
 ## Integration Testing Strategy
 
-We've implemented an integration testing strategy that verifies the Gateway client's functionality without requiring actual network connections:
+We've implemented a mock-based integration testing strategy that verifies the Gateway client's functionality without requiring actual network connections:
 
 1. **Mock-based Integration Tests**:
    - Created robust mock implementations of gRPC stubs
@@ -21,52 +21,74 @@ We've implemented an integration testing strategy that verifies the Gateway clie
 
 3. **CI Integration**:
    - Added dedicated workflow for integration tests
-   - Separated concerns from unit tests
    - Configured code coverage reporting
+   - Designed tests to work consistently in all environments
+
+## Implementation Details
+
+The integration testing strategy follows these key principles:
+
+1. **Environment Independence**:
+   - Tests work regardless of the availability of gRPC dependencies
+   - Graceful fallbacks and appropriate skipping when dependencies are missing
+   - No assumptions about specific versions of gRPC or protobuf libraries
+
+2. **Realistic Testing**:
+   - The mocks simulate actual Gateway service behavior
+   - Error conditions match those in the real service
+   - Response structures match the expected protobuf message structures
+
+3. **Test Isolation**:
+   - Each test runs with a fresh set of mocks
+   - No test state leaks between test cases
+   - Tests can be run in parallel
 
 ## Running the Tests
 
 To run the integration tests locally:
 
 ```bash
-# Install dependencies
+# Install dependencies with the grpc extras
 poetry install --extras grpc
-poetry add grpcio-testing --group dev
 
 # Run the mock integration tests
 poetry run pytest tests/gateway/test_mock_integration.py -v
+
+# Run all gateway tests including the integration tests
+poetry run pytest tests/gateway/ -v
 ```
 
 ## Future Enhancements
 
 For future work on integration testing, we recommend:
 
-1. **In-Process gRPC Server**:
-   - Implement a lightweight in-process gRPC server
-   - Use grpc_testing module for full request/response handling
-   - Test actual proto message serialization/deserialization
-
-2. **More Comprehensive Scenarios**:
+1. **More Comprehensive Scenarios**:
    - Add tests for more complex retry scenarios
    - Test edge cases around timeouts and reconnections
    - Add tests for streaming operations
 
-3. **Test Environment**:
+2. **Test Environment**:
    - Create a dockerized test environment
    - Use a real gRPC server in CI for true end-to-end testing
    - Add load/performance testing for the client
 
+3. **Feature Coverage**:
+   - Expand tests as new Gateway features are added
+   - Build specialized fixtures for specific testing scenarios
+   - Increase code coverage for error handling paths
+
 ## Implementation Notes
 
-The initial attempt at creating an in-process gRPC server was complex due to:
+We initially explored creating an in-process gRPC server using grpc_testing, but encountered several challenges:
 
 1. Differences in grpc_testing module APIs between versions
 2. Complexity of setting up proper channel and stub mocking
 3. Difficulties in handling error conditions realistically
 
-The current approach using mock stubs provides a good balance between:
-- Test coverage and reliability
-- Implementation complexity
-- Execution speed
+The current mock-based approach provides several advantages:
+- Better test reliability across different environments
+- Simpler implementation with lower maintenance burden
+- Faster test execution 
+- More direct control over test scenarios
 
-We can revisit the in-process gRPC server approach in the future if more sophisticated testing is needed.
+We can revisit a more complex in-process server approach in the future if more sophisticated testing is needed.

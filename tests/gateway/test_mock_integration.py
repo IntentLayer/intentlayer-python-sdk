@@ -7,11 +7,11 @@ implementations of gRPC services without requiring network connections.
 import pytest
 import logging
 import os
-import grpc
 from unittest.mock import patch, MagicMock
 
 # Skip tests if proto stubs aren't available
 try:
+    import grpc
     from intentlayer_sdk.gateway.proto import (
         RegisterError as ProtoRegisterError,
         DidDocument as ProtoDidDocument,
@@ -20,65 +20,44 @@ try:
         RegisterDidResponse,
         PROTO_AVAILABLE
     )
+    
+    # Only import when proto is available
+    if PROTO_AVAILABLE:
+        from intentlayer_sdk.gateway.client import GatewayClient, DidDocument
+        from intentlayer_sdk.gateway.exceptions import (
+            GatewayError, GatewayConnectionError, GatewayTimeoutError,
+            QuotaExceededError, GatewayResponseError
+        )
+    else:
+        GatewayClient = None
+        DidDocument = None
+        GatewayError = Exception
+        GatewayResponseError = Exception
+        
     proto_available = PROTO_AVAILABLE
 except ImportError:
     proto_available = False
-
-# Only import when proto is available
-if proto_available:
-    from intentlayer_sdk.gateway.client import GatewayClient, DidDocument
-    from intentlayer_sdk.gateway.exceptions import (
-        GatewayError, GatewayConnectionError, GatewayTimeoutError,
-        QuotaExceededError, GatewayResponseError
-    )
+    grpc = None
+    # Define placeholder types
+    GatewayClient = None
+    DidDocument = None
+    GatewayError = Exception
+    GatewayResponseError = Exception
 
 # Configure logger
 logger = logging.getLogger(__name__)
 
 # Skip all tests in this module if dependencies aren't available
+# Import fixtures from gateway conftest
+from tests.gateway._conftest import mock_gateway_stub, gateway_test_client
+
 pytestmark = pytest.mark.skipif(
     not proto_available,
     reason="proto stubs not available"
 )
 
 
-@pytest.fixture
-def mock_gateway_stub():
-    """Create a mock gateway stub for testing."""
-    stub = MagicMock()
-    
-    # Configure RegisterDid to return success by default
-    success_receipt = ProtoTxReceipt(
-        hash="0x" + "1" * 64,
-        gas_used=21000,
-        success=True,
-        error="",
-        error_code=ProtoRegisterError.UNKNOWN_UNSPECIFIED
-    )
-    success_response = RegisterDidResponse(receipt=success_receipt)
-    stub.RegisterDid.return_value = success_response
-    
-    return stub
-
-
-@pytest.fixture
-def gateway_test_client(mock_gateway_stub):
-    """
-    Create a gateway client with a mock stub.
-    
-    Args:
-        mock_gateway_stub: The mock stub to use
-        
-    Returns:
-        GatewayClient with mock stub
-    """
-    # Create the client with a dummy URL
-    client = GatewayClient("https://test.example.com")
-    
-    # Replace the stub with our mock
-    client.stub = mock_gateway_stub
-    
-    return client
+# Fixtures imported from tests.gateway._conftest
 
 
 class TestGatewayClientIntegration:
