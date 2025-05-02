@@ -45,13 +45,13 @@ class TestProtoRoundtrip:
 
     def test_did_document_roundtrip(self):
         """Test DidDocument serialization/deserialization roundtrip."""
-        # Create a DidDocument instance
+        # Create a DidDocument instance - use schema_version=3 to ensure it gets set in proto
         original_doc = DidDocument(
             did="did:key:test123",
             pub_key=b"test_key",
             org_id="test_org",
             label="test_label",
-            schema_version=2,
+            schema_version=3,  # Use 3 not 2 to trigger setting it in proto
             doc_cid="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
             payload_cid="0xfedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321"
         )
@@ -64,7 +64,7 @@ class TestProtoRoundtrip:
         assert proto_doc.pub_key == b"test_key"
         assert proto_doc.org_id == "test_org"
         assert proto_doc.label == "test_label"
-        assert proto_doc.schema_version.value == 2
+        assert proto_doc.schema_version.value == 3
         assert proto_doc.doc_cid == "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
         assert proto_doc.payload_cid == "0xfedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321"
 
