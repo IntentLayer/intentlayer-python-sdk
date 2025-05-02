@@ -40,9 +40,9 @@ cachetools      = ">=5.0.0"
 
 [tool.poetry.extras]
 grpc = [
-  "grpcio>=1.59.0",
-  "grpcio-tools>=1.59.0",
-  "protobuf>=4.24.0",
+  "grpcio",
+  "grpcio-tools",
+  "protobuf",
 ]
 
 [tool.poetry.scripts]
