@@ -41,19 +41,19 @@ jobs:
         run: cd ./intentlayer_sdk
 
       - name: Install deps
-        run: poetry install --with grpc
+        run: poetry install --extras grpc
         working-directory: ./intentlayer_sdk
 
       - name: Clean proto files
-        run: make clean-proto
+        run: poetry run make clean-proto
         working-directory: ./intentlayer_sdk
 
       - name: Generate proto files
-        run: make proto
+        run: poetry run make proto
         working-directory: ./intentlayer_sdk
 
       - name: Verify proto stubs
-        run: make check-proto-stubs
+        run: poetry run make check-proto-stubs
         working-directory: ./intentlayer_sdk
 
       - name: Smoke-import generated stubs

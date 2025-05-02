@@ -41,10 +41,10 @@ jobs:
       run: mkdir -p .build
     
     - name: Clean proto files
-      run: make clean-proto
+      run: poetry run make clean-proto
     
     - name: Generate proto files
-      run: make proto
+      run: poetry run make proto
       
     - name: Run tests with coverage
       run: |
