@@ -21,8 +21,14 @@ proto: init-build-dir
 		--python_out=$(PROTO_OUT) \
 		--grpc_python_out=$(PROTO_OUT) \
 		$(PROTO_DIR)/gateway.proto
+	@echo "Fixing imports in generated files..."
+	@if [ -f $(PROTO_OUT)/gateway_pb2_grpc.py ]; then \
+		python -c "import re; \
+			content = open('$(PROTO_OUT)/gateway_pb2_grpc.py', 'r').read(); \
+			content = re.sub(r'import gateway_pb2 as gateway__pb2', 'from intentlayer_sdk.gateway.proto import gateway_pb2 as gateway__pb2', content); \
+			open('$(PROTO_OUT)/gateway_pb2_grpc.py', 'w').write(content)"; \
+	fi
 	@echo "Proto generation complete"
-	@echo "NOTE: If you encounter import errors, you may need to manually adjust the import statements in the generated files."
 
 # Clean generated proto files
 clean-proto:

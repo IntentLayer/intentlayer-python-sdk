@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-import gateway_pb2 as gateway__pb2
+from intentlayer_sdk.gateway.proto import gateway_pb2 as gateway__pb2
 
 GRPC_GENERATED_VERSION = '1.72.0rc1'
 GRPC_VERSION = grpc.__version__
