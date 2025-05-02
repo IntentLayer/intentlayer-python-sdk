@@ -12,6 +12,7 @@ We consolidated the rate-limited logging tests and introduced parametrization in
 - **Parameterized Expiry Tests**: Tests that verify cache expiry now use a single parameterized test instead of separate tests for each implementation
 - **Thread Safety Tests**: Simplified and made more robust to ensure proper thread safety across implementations
 - **Concurrent Operation Tests**: Added a more resilient test for concurrent operations that doesn't depend on specific implementation details
+- **Cache Cleanup Tests**: Added test for expired entry cleanup in dictionary-based implementation
 
 ### 2. Chain ID Validation Tests
 

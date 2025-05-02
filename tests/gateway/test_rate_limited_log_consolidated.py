@@ -50,11 +50,13 @@ class TestRateLimitedLog:
         self.logger.addHandler(handler)
         self.handler = handler
         
-        # Reset the log cache between tests
+        # Reset the log cache between tests using monkeypatching
         if TTLCACHE_AVAILABLE:
+            # Reset TTLCache
             with patch('intentlayer_sdk.gateway._rate_limited_log._error_log_cache', TTLCache(maxsize=100, ttl=3600)):
                 pass
         else:
+            # Reset dictionary cache
             with patch('intentlayer_sdk.gateway._rate_limited_log._error_log_timestamps', {}):
                 pass
         
@@ -161,6 +163,32 @@ class TestRateLimitedLog:
                 # Should log again after expiry
                 rate_limited_log(message=f"Test message 1 {test_id}", logger_instance=self.logger)
                 assert len(self.logged_messages) == 2, "Message should have been logged again after time-based expiry"
+                
+                # Also test the cleanup of old entries
+                # Add a mix of fresh and expired entries
+                with patch('intentlayer_sdk.gateway._rate_limited_log.datetime') as mock_datetime:
+                    # Set a fixed current time
+                    base_time = datetime.now()
+                    mock_datetime.now.return_value = base_time
+                    
+                    # Create test cache with mix of old and new entries
+                    test_cache = {
+                        "old_entry_1": base_time - timedelta(hours=2),
+                        "old_entry_2": base_time - timedelta(hours=1, minutes=1),
+                        "new_entry_1": base_time - timedelta(minutes=30),
+                        "new_entry_2": base_time - timedelta(minutes=10)
+                    }
+                    
+                    # Apply the test cache
+                    with patch('intentlayer_sdk.gateway._rate_limited_log._error_log_timestamps', test_cache):
+                        # Now trigger a log which should clean up old entries
+                        rate_limited_log(message="Trigger cleanup", logger_instance=self.logger)
+                        
+                        # Verify that old entries were removed and new ones remain
+                        assert "old_entry_1" not in test_cache, "Old entry should have been cleaned up"
+                        assert "old_entry_2" not in test_cache, "Old entry should have been cleaned up"
+                        assert "new_entry_1" in test_cache, "New entry should have been kept"
+                        assert "new_entry_2" in test_cache, "New entry should have been kept"
 
     # Just test thread safety using concurrent calls to verify there are no exceptions
     def test_thread_safety(self):
