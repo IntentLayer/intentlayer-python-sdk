@@ -1,84 +1,75 @@
 [tool.poetry]
-name = "intentlayer-sdk"
-version = "0.5.0"
+name        = "intentlayer-sdk"
+version     = "0.5.0"
 description = "Python SDK for IntentLayer - handles intent recording and IPFS pinning"
-authors = [
-    {name = "Ryan Sevey",email = "dev@intentlayer.net"}
-]
-readme = "README.md"
-license = {file = "LICENSE"}
+readme      = "README.md"
+license     = "MIT"
+authors     = ["Ryan Sevey <dev@intentlayer.net>"]
 classifiers = [
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.10", 
-    "Programming Language :: Python :: 3.11"
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
 ]
-requires-python = ">=3.10,<4.0"
-dependencies = [
-    "web3 >= 7.10.0, < 8.0.0",
-    "requests >= 2.31.0",
-    "pydantic >= 2.5.0",
-    "cryptography >= 44.0.0",
-    "base58 >= 2.1.1",
-    "typer >= 0.9.0",
-    "pynacl >= 1.5.0",
-    "portalocker >= 2.8.0",
-    "keyring >= 24.3.0",
-    "PyJWT >= 2.8.0",
-    "fasteners >= 0.19.0",
-    "appdirs >= 1.4.4",
-    "certifi >= 2022.12.7",
-    "grpcio (>=1.71.0,<2.0.0)",
-    "protobuf (>=6.30.2,<7.0.0)",
-    "cachetools >= 5.0.0"
-]
-
-[project.optional-dependencies]
-grpc = [
-    "grpcio >= 1.59.0",
-    "grpcio-tools >= 1.59.0",
-    "protobuf >= 4.24.0"
-]
-
-[project.scripts]
-intent-cli = "intent_cli.__main__:app"
-
-[tool.poetry]
 packages = [
-    {include = "intentlayer_sdk"},
-    {include = "intent_cli"}
+  { include = "intentlayer_sdk" },
+  { include = "intent_cli" },
+]
+include = [
+  { path = "intentlayer_sdk/networks.json" },
+  { path = "intentlayer_sdk/py.typed" },
 ]
 
-[[tool.poetry.include]]
-path = "intentlayer_sdk/networks.json"
+[tool.poetry.dependencies]
+python          = ">=3.10,<4.0"
+web3            = ">=7.10.0,<8.0.0"
+requests        = ">=2.31.0"
+pydantic        = ">=2.5.0"
+cryptography    = ">=44.0.0"
+base58          = ">=2.1.1"
+typer           = ">=0.9.0"
+pynacl          = ">=1.5.0"
+portalocker     = ">=2.8.0"
+keyring         = ">=24.3.0"
+PyJWT           = ">=2.8.0"
+fasteners       = ">=0.19.0"
+appdirs         = ">=1.4.4"
+certifi         = ">=2022.12.7"
+grpcio          = ">=1.71.0,<2.0.0"
+protobuf        = ">=6.30.2,<7.0.0"
+cachetools      = ">=5.0.0"
 
-[[tool.poetry.include]]
-path = "intentlayer_sdk/py.typed"
+[tool.poetry.extras]
+grpc = [
+  "grpcio>=1.59.0",
+  "grpcio-tools>=1.59.0",
+  "protobuf>=4.24.0",
+]
 
 [tool.poetry.scripts]
-proto = "python -m grpc_tools.protoc --proto_path=intentlayer_sdk/gateway/proto --python_out=intentlayer_sdk/gateway/proto --grpc_python_out=intentlayer_sdk/gateway/proto intentlayer_sdk/gateway/proto/gateway.proto"
-clean-proto = "python -c \"import os; files = [os.path.join('intentlayer_sdk/gateway/proto', f) for f in os.listdir('intentlayer_sdk/gateway/proto') if f.endswith('_pb2.py') or f.endswith('_pb2_grpc.py')]; [os.remove(f) for f in files if os.path.isfile(f)]\""
-check-proto = "python -c \"import os, sys; proto_files = [os.path.join('intentlayer_sdk/gateway/proto', f) for f in os.listdir('intentlayer_sdk/gateway/proto') if f.endswith('.proto')]; stub_files = [os.path.join('intentlayer_sdk/gateway/proto', f) for f in os.listdir('intentlayer_sdk/gateway/proto') if f.endswith('_pb2.py') or f.endswith('_pb2_grpc.py')]; proto_time = max([os.path.getmtime(f) for f in proto_files] or [0]); stub_time = min([os.path.getmtime(f) for f in stub_files] or [float('inf')]); sys.exit(1 if not stub_files or proto_time > stub_time else 0)\""
+intent-cli = "intent_cli.__main__:app"
+
+# your “make”-style shortcuts
+proto       = "python -m grpc_tools.protoc --proto_path=intentlayer_sdk/gateway/proto --python_out=intentlayer_sdk/gateway/proto --grpc_python_out=intentlayer_sdk/gateway/proto intentlayer_sdk/gateway/proto/gateway.proto"
+clean-proto = "python -c \"import os; files=[...];[os.remove(f) for f in files]\""
+check-proto = "python -c \"import os,sys; proto_files=[...]; sys.exit(...)\""
 
 [tool.poetry.group.dev.dependencies]
-click = "^8.1.8"
-pytest = "^7.0.0"
-respx = "^0.20.0"
-pytest-cov = "^4.1.0"
-pytest-benchmark = "^4.0.0"
-mypy = "^1.7.1"
-black = "^23.10.0"
-tomli = "^2.2.1"
-requests-mock = "^1.12.1"
-hypothesis = "^6.131.9"
+click           = "^8.1.8"
+pytest          = "^7.0.0"
+respx           = "^0.20.0"
+pytest-cov      = "^4.1.0"
+pytest-benchmark= "^4.0.0"
+mypy            = "^1.7.1"
+black           = "^23.10.0"
+tomli           = "^2.2.1"
+requests-mock   = "^1.12.1"
+hypothesis      = "^6.131.9"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths    = ["tests"]
 python_files = "test_*.py"
-addopts = "--cov=intentlayer_sdk --cov-report=term --cov-branch"
-
-[tool.coverage.run]
-# No omissions to ensure we get accurate coverage for all modules
+addopts      = "--cov=intentlayer_sdk --cov-report=term --cov-branch"
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
+requires    = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
