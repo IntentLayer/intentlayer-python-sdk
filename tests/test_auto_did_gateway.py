@@ -92,8 +92,7 @@ class TestAutoDidGatewayRegistration:
     def test_concurrent_registration(self):
         """Test that concurrent calls only result in one RegisterDid RPC."""
         import threading
-        import respx
-        import httpx
+        import time
         
         # Mock the identity
         identity = MagicMock()
@@ -111,7 +110,7 @@ class TestAutoDidGatewayRegistration:
         
         # Mock gateway client that counts calls
         class MockGatewayClient:
-            def register_did(self, did, pub_key=None, org_id=None):
+            def register_did(self, did, pub_key=None, org_id=None, schema_version=None):
                 nonlocal call_counter
                 # Increment the call counter in a thread-safe way
                 with counter_lock:
@@ -165,14 +164,18 @@ class TestAutoDidGatewayRegistration:
         # A valid JWT with an org_id claim (header.payload.signature format)
         test_jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJvcmdfaWQiOiJvcmcxMjMiLCJpYXQiOjE2MDAwMDAwMDB9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
         
-        with patch.dict(os.environ, {"INTENT_API_KEY": test_jwt}):
+        with patch.dict(os.environ, {
+            "INTENT_API_KEY": test_jwt,
+            "INTENT_ENV_TIER": "test"  # Use test tier to avoid requiring JWT signature verification
+        }):
             # Extract org_id from environment variable
             org_id = extract_org_id_from_api_key()
             assert org_id == "org123"
         
-        # Test with direct parameter
-        org_id = extract_org_id_from_api_key(test_jwt)
-        assert org_id == "org123"
+        # Test with direct parameter and test env tier
+        with patch.dict(os.environ, {"INTENT_ENV_TIER": "test"}):
+            org_id = extract_org_id_from_api_key(test_jwt)
+            assert org_id == "org123"
         
         # Test with invalid JWT
         org_id = extract_org_id_from_api_key("not.a.valid.jwt")
@@ -238,15 +241,16 @@ class TestAutoDidGatewayRegistration:
         with patch('intentlayer_sdk.identity.registration.extract_org_id_from_api_key') as mock_extract:
             mock_extract.return_value = "org123"
             
-            # Call ensure_registered
-            result = manager.ensure_registered()
+            # Call ensure_registered with explicit schema_version=2
+            result = manager.ensure_registered(schema_version=2)
             
             # Verify the result and interactions
             assert result is True  # DID was newly registered
             gateway_client.register_did.assert_called_once_with(
                 did="did:key:test123",
                 pub_key=b'pubkey',
-                org_id="org123"
+                org_id="org123",
+                schema_version=2
             )
     
     def test_identity_manager_ensure_registered_already_registered(self):

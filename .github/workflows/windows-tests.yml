@@ -1,0 +1,55 @@
+name: Windows Tests
+
+on:
+  push:
+    branches: [ main, feature/*, bug/* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  windows-tests:
+    name: Python ${{ matrix.python-version }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: 1.7.0
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+    
+    - name: Install dependencies
+      run: |
+        poetry install --extras grpc
+    
+    - name: Create build directory
+      run: mkdir -p .build
+    
+    - name: Clean proto files
+      run: poetry run make clean-proto
+    
+    - name: Generate proto files
+      run: poetry run make proto
+      
+    - name: Run tests with coverage
+      run: |
+        poetry run pytest --cov=intentlayer_sdk --cov-branch --cov-report=xml
+        
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}

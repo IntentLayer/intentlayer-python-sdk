@@ -51,24 +51,25 @@ This document outlines the plan to address the feedback on the Auto-DID Gateway 
    - [x] Adjust TTLCache test to avoid time.sleep() dependencies
    - [x] Add Windows compatibility for proto generation (pyproject.toml tasks)
 
-4. 🔴 **V1 Protocol Deprecation & Cleanup** (Owner: rsevey, Target: 2023-05-06)
-   - [ ] Remove or archive all V1-only code, contracts, and tests
-   - [ ] Update all documentation to reflect V2-only support
-   - [ ] Remove V1 compatibility layers in client code
-   - [ ] Add deprecation notices where appropriate
+4. ✅ **V1 Protocol Deprecation & Cleanup** (Owner: rsevey, Completed: 2023-05-06)
+   - [x] Remove or archive all V1-only code, contracts, and tests
+   - [x] Update all documentation to reflect V2-only support
+   - [x] Remove V1 compatibility layers in client code
+   - [x] Add deprecation notices where appropriate
+   - [x] Set default schema_version=2 in relevant code locations
 
-5. 🔴 **Documentation & Version Updates** (Owner: rsevey, Target: 2023-05-07)
-   - [ ] Update README.md to reflect V2-only protocol support
-   - [ ] Bump SDK version to 0.5.0 in pyproject.toml
-   - [ ] Create CHANGELOG.md entry documenting the breaking change
-   - [ ] Document new Makefile targets and proto generation process
-   - [ ] Update API references and example code
+5. ✅ **Documentation & Version Updates** (Owner: rsevey, Completed: 2023-05-07)
+   - [x] Update README.md to reflect V2-only protocol support
+   - [x] Bump SDK version to 0.5.0 in pyproject.toml
+   - [x] Create CHANGELOG.md entry documenting the breaking change
+   - [x] Document new Makefile targets and proto generation process
+   - [x] Update API references and example code
 
-6. 🔴 **CI Enforcement** (Owner: TBD, Target: 2023-05-08)
-   - [ ] Create GitHub Actions matrix for Linux, macOS, and Windows
-   - [ ] Add CI job that runs `make proto && pytest` on all platforms
-   - [ ] Add CI check that V1 code has been properly removed/archived
-   - [ ] Ensure all new tests run on all supported platforms
+6. ✅ **CI Enforcement** (Owner: rsevey, Completed: 2023-05-08)
+   - [x] Create GitHub Actions matrix for Linux, macOS, and Windows
+   - [x] Add CI job that runs `make proto && pytest` on all platforms
+   - [x] Add CI check that V1 code has been properly removed/archived
+   - [x] Ensure all new tests run on all supported platforms
 
 ## Remaining Tasks (Post Production)
 
@@ -125,9 +126,14 @@ This document outlines the plan to address the feedback on the Auto-DID Gateway 
 - [x] Make JWT unsafe algorithm rejection consistent
 - [x] Add multi-platform CI checks for proto generation
 - [x] Create Poetry/pyproject.toml tasks for Windows compatibility
-- [ ] Remove/archive all V1-only code and contracts
-- [ ] Bump SDK version to 0.5.0 with proper CHANGELOG entry
-- [ ] Update documentation to reflect V2-only support
+- [x] Remove/archive all V1-only code and contracts
+- [x] Bump SDK version to 0.5.0 with proper CHANGELOG entry
+- [x] Update documentation to reflect V2-only support
+- [x] Set default schema_version=2 in codebase
+- [x] Create GitHub Actions matrix for Linux, macOS, and Windows
+- [x] Add CI job for comprehensive cross-platform testing
+- [x] Add CI check that V1 code has been properly removed/archived
+- [x] Add cross-platform compatibility tests
 
 ### Medium Priority (Post-Production)
 - [ ] Add integration tests with real or mocked gRPC service
@@ -142,10 +148,10 @@ This document outlines the plan to address the feedback on the Auto-DID Gateway 
 
 ## Production Rollout Plan
 
-1. **Stage 1: Fix Critical Issues** (Target: 2023-05-08)
-   - Fix all issues in the High Priority list
-   - Run cross-platform CI checks
-   - Validate changes with gateway team
+1. **Stage 1: Fix Critical Issues** (Target: 2023-05-08) ✅
+   - [x] Fix all issues in the High Priority list
+   - [x] Run cross-platform CI checks
+   - [x] Validate changes with gateway team
 
 2. **Stage 2: User Communication** (Target: 2023-05-09)
    - Prepare "What's Changed" email/communication for users and partners

@@ -1,0 +1,69 @@
+name: V1 Protocol Code Check
+
+on:
+  push:
+    branches: [ main, feature/*, bug/* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check-v1-code-removal:
+    name: Verify V1 Protocol Code Removal
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Check for V1 protocol references
+      run: |
+        # Define patterns that should not exist in the codebase
+        declare -a patterns=(
+          "schema_version.*=.*1"
+          "schema_version.*==.*1"
+          "INTENT_SCHEMA_VERSION.*=.*1" 
+          "schema_version.*=.*None"
+          "V1 DidRegistry" 
+          "V1Protocol" 
+          "V1 protocol"
+          "schema_version:.*None"
+        )
+        
+        # Excluded paths (tests, changelog, etc.)
+        excluded_paths=(
+          -path "*/\.*" -o 
+          -path "*/\CHANGELOG.md" -o
+          -path "*/\README.md" -o
+          -path "*/\.git/*"
+        )
+        
+        # Check each pattern
+        found_v1_code=false
+        
+        echo "🔍 Checking for deprecated V1 protocol code..."
+        
+        for pattern in "${patterns[@]}"
+        do
+          echo "Checking pattern: $pattern"
+          # Find files containing the pattern, excluding specific paths
+          matches=$(find . -type f \( "${excluded_paths[@]}" \) -prune -o -type f -name "*.py" -exec grep -l "$pattern" {} \;)
+          
+          if [ -n "$matches" ]; then
+            echo "⚠️ Found potential V1 protocol code:"
+            echo "$matches"
+            echo "------------------------"
+            for file in $matches; do
+              echo "In file: $file"
+              grep -n "$pattern" "$file"
+              echo ""
+            done
+            echo "------------------------"
+            found_v1_code=true
+          fi
+        done
+        
+        if [ "$found_v1_code" = true ]; then
+          echo "❌ V1 protocol code was found. All V1 protocol code should be removed as part of the V1 Protocol Deprecation."
+          exit 1
+        else
+          echo "✅ No V1 protocol code found. All checks passed."
+        fi
