@@ -1,174 +1,366 @@
-# Gateway Integration Enhancement Plan
+# Implementation Plan: SDK Authentication for API Keys
 
-This document outlines the plan to address the feedback on the Auto-DID Gateway implementation.
+## Overview
 
-## Initial Implementation (2023-05-01)
+This plan updates the IntentLayer Python SDK to use API key authentication as the primary method, with fallback support for JWT tokens. The changes align with the gateway team's migration to Kong Konnect for API key management.
 
-1. ✅ **Replace Placeholder Stub with Real Implementation**
-   - Added proto files to project and set up protoc integration
-   - Created Makefile target for protoc generation and CI check for stale stubs
-   - Replaced placeholder with real gateway_pb2_grpc.GatewayServiceStub
-   - Added tests for proto serialization/deserialization roundtrip
+## Key Requirements
 
-2. ✅ **Fix Schema Fields**
-   - Updated DidDocument class to include all fields required by V2 proto
-   - Added proper field validation with detailed error messages
-   - Implemented proper to_proto/from_proto conversion methods
-   - Ensured all fields are correctly passed to the gateway stub
+1. **Authentication Headers**:
+   - [x] Use `Authorization: Key <INTENT_API_KEY>` as the primary authentication method
+   - [x] The SDK does NOT send `x-intent-org-id` - Kong will handle that transformation
+   - [x] Keep API keys as opaque strings (not UUIDs) - no format validation needed
+   - [x] Trim whitespace on credentials to handle copy-paste errors
 
-3. ✅ **Secure JWT Verification**
-   - Implemented tiered approach for JWT validation (prod/test/dev environments)
-   - Made signature verification mandatory in production
-   - Added detection and rejection of unsafe algorithms
-   - Added tests for JWT verification in all environment tiers
-   - Enhanced error reporting for validation failures
+2. **JWT Fallback Support**:
+   - [x] Support `INTENT_BEARER_TOKEN` environment variable (or CLI `--jwt-token`) 
+   - [x] If API key is absent but bearer token exists, use `Authorization: Bearer <token>`
+   - [x] Document this as deprecated, noting it requires Gateway with `--enable-jwt-fallback`
+   - [x] Raise error if both API key and Bearer token are provided
 
-4. ✅ **Rate-Limit Cache Improvement**
-   - Replaced unbounded error log timestamps dictionary with cachetools.TTLCache
-   - Made cache thread-safe with proper locking
-   - Added proper TTL for cache entries (1 hour)
-   - Implemented graceful fallback when cachetools is not available
+3. **Connection Security**:
+   - [x] Parse URL schemes: `http`, `https`, `grpc`, `grpcs`
+   - [x] Use `secure_channel` for `https` and `grpcs`
+   - [x] Use `insecure_channel` for `grpc`
+   - [x] For `http`, default to insecure but warn unless explicitly allowed
+   - [x] When `INTENT_SKIP_TLS_VERIFY=true`, keep TLS encryption but skip certificate validation
 
-## Critical Pre-Production Fixes (HIGH PRIORITY)
+4. **Environment Variables and CLI Flags**:
+   - [x] Use `INTENT_API_KEY` (not renaming to INTENT_ORG_ID to avoid confusion)
+   - [x] Support `INTENT_SKIP_TLS_VERIFY=true` for development environments
+   - [x] Print strong security warnings (in red/bold where possible) for insecure channels
+   - [x] Add CLI flags for `--allow-insecure` and `--jwt-token`
 
-1. ✅ **Makefile & Proto Generation Issues** (Owner: rsevey, Completed: 2023-05-03)
-   - [x] Remove runtime pip install calls for stable CI/CD builds
-   - [x] Use pinned dependencies in pyproject.toml or requirements.txt
-   - [x] Fix platform-dependent stat command (macOS vs Linux compatibility)
-   - [x] Relocate temp files from /tmp to .build/ directory to avoid race conditions
-   - [x] Add CI job that verifies proto generation across platforms
+## Implementation Tasks
 
-2. ✅ **Example Script Fixes** (Owner: rsevey, Completed: 2023-05-04)
-   - [x] Fix schema_version parameter mismatch with from_network signature
-   - [x] Make input() prompts conditional with argparse and CI detection
-   - [x] Separate demo code from library usage patterns
-   - [x] Add non-interactive mode for CI pipelines
+### 1. Update Authentication Headers
 
-3. ✅ **Code Structure Improvements** (Owner: Claude, Completed: 2023-05-05)
-   - [x] Extract a transport layer to reduce conditional PROTO_AVAILABLE branches
-   - [x] Enhance thread safety in _rate_limited_log by wrapping the entire function
-   - [x] Make JWT unsafe algorithm handling consistent across all environment tiers
-   - [x] Adjust TTLCache test to avoid time.sleep() dependencies
-   - [x] Add Windows compatibility for proto generation (pyproject.toml tasks)
+1. Modify `GatewayClient._create_metadata()` in `intentlayer_sdk/gateway/client.py`:
+   - [x] Use `INTENT_API_KEY` from environment or constructor parameter
+   - [x] Change prefix from `Bearer` to `Key`
+   - [x] Remove all JWT validation logic (no longer needed)
+   - [x] Add fallback to use `Authorization: Bearer <token>` if `INTENT_BEARER_TOKEN` is set and API key is absent
+   - [x] Raise error if both API key and Bearer token are provided
+   - [x] Trim whitespace from credentials to handle copy-paste issues
 
-4. ✅ **V1 Protocol Deprecation & Cleanup** (Owner: rsevey, Completed: 2023-05-06)
-   - [x] Remove or archive all V1-only code, contracts, and tests
-   - [x] Update all documentation to reflect V2-only support
-   - [x] Remove V1 compatibility layers in client code
-   - [x] Add deprecation notices where appropriate
-   - [x] Set default schema_version=2 in relevant code locations
+### 2. Update URL Scheme Parsing
 
-5. ✅ **Documentation & Version Updates** (Owner: rsevey, Completed: 2023-05-07)
-   - [x] Update README.md to reflect V2-only protocol support
-   - [x] Bump SDK version to 0.5.0 in pyproject.toml
-   - [x] Create CHANGELOG.md entry documenting the breaking change
-   - [x] Document new Makefile targets and proto generation process
-   - [x] Update API references and example code
+1. Enhance URL parsing in `_validate_gateway_url()` and `_create_channel()`:
+   - [x] Parse URL schemes: `http`, `https`, `grpc`, `grpcs`
+   - [x] Use `secure_channel` for `https` and `grpcs`
+   - [x] Use `insecure_channel` for `grpc`
+   - [x] For `http`, default to insecure but warn unless explicitly allowed
+   - [x] When `INTENT_SKIP_TLS_VERIFY=true`, keep TLS encryption but skip certificate validation
 
-6. ✅ **CI Enforcement** (Owner: rsevey, Completed: 2023-05-08)
-   - [x] Create GitHub Actions matrix for Linux, macOS, and Windows
-   - [x] Add CI job that runs `make proto && pytest` on all platforms
-   - [x] Add CI check that V1 code has been properly removed/archived
-   - [x] Ensure all new tests run on all supported platforms
+### 3. Add Environment Variables and CLI Flags
 
-## Remaining Tasks (Post Production)
+1. Add `INTENT_SKIP_TLS_VERIFY` environment variable support:
+   - [x] Implement in URL validation and channel creation
+   - [x] Print strong security warnings for insecure connections (in red where possible)
 
-### Phase 2: Testing & Code Quality
+2. Add CLI flags:
+   - [x] `--allow-insecure`: Allow insecure connections (sets `INTENT_SKIP_TLS_VERIFY=true`)
+   - [x] `--jwt-token`: Provide JWT token for authentication (deprecated)
 
-#### Integration Tests
-- [ ] Create lightweight in-process gRPC server for testing
-- [ ] Add request/response handling tests with real proto messages
-- [ ] Add CI job for integration testing with actual stubs
+### 4. Test Coverage
 
-#### Edge-Case Error Testing
-- [ ] Create test harness for simulating gRPC deadline exceeded
-- [ ] Add tests for INVALID_PAYLOAD errors
-- [ ] Add tests for UNAUTHORIZED errors
-- [ ] Test retry logic for transient errors
+1. Create tests for different connection schemes and auth methods:
+   - [x] `grpc://` + Key → header = Key, insecure channel
+   - [x] `https://` + Key → header = Key, secure channel
+   - [x] `https://` + Bearer token → header = Bearer, secure channel
+   - [x] Both env vars set → raises ValueError
 
-#### Certificate Testing
-- [ ] Test INTENT_GATEWAY_CA loading
-- [ ] Test certificate expiry handling
-- [ ] Test invalid certificate formats
-- [ ] Test CA append vs. replace functionality
-- [ ] Test failure scenarios and fallback behavior
+### 5. Documentation Updates
 
-#### Code Refactoring
-- [ ] Extract retry loop to dedicated helper class
-- [ ] Move error-mapping logic to separate module
-- [ ] Extract TLS/certificate handling to utility class
-- [ ] Refactor register_did into smaller methods
-- [ ] Improve overall class organization
+1. Update environment variable documentation:
+   - [x] Show example: `export INTENT_API_KEY=sk_live_123...`
+   - [x] Note that Kong maps the key to an organization automatically - no UUID needed
+   - [x] Document `INTENT_BEARER_TOKEN` as deprecated
+   - [x] Explain security implications of `INTENT_SKIP_TLS_VERIFY`
+   - [x] Document URL scheme handling
 
-### Phase 3: Security & Clean-up
+## Code Changes
 
-#### Sensitive Logging
-- [ ] Define sensitive fields whitelist/blacklist
-- [ ] Add linter rule or script to detect sensitive logging
-- [ ] Implement redaction for DIDs, tokens, etc.
-- [ ] Add hooks for SIEM integration
+### 1. Update GatewayClient Constructor
 
-#### Dead Code Removal
-- [ ] Clean up duplicate imports
-- [ ] Remove remaining placeholder stub code
-- [ ] Remove commented JWT block in _create_metadata
-- [ ] Improve documentation and comments
+```python
+def __init__(
+    self,
+    gateway_url: str,
+    api_key: Optional[str] = None,
+    bearer_token: Optional[str] = None,
+    timeout: Optional[int] = None,
+    verify_ssl: bool = True
+):
+    """
+    Initialize the Gateway client.
 
-## Updated Todo List
+    Args:
+        gateway_url: URL of the gateway service
+        api_key: Optional API key for authentication (preferred)
+        bearer_token: Optional JWT token for authentication (deprecated)
+        timeout: Request timeout in seconds
+        verify_ssl: Whether to verify SSL certificates
 
-### High Priority (Pre-Production)
-- [x] Fix Makefile to avoid runtime pip install and use repo-local temp files
-- [x] Fix platform-dependent stat command for Linux compatibility
-- [x] Fix schema_version parameter mismatch in auto_did_v2_example.py
-- [x] Make example scripts CI-friendly with non-interactive mode
-- [x] Simplify conditional PROTO_AVAILABLE logic with transport layer abstraction
-- [x] Improve thread safety in _rate_limited_log
-- [x] Make JWT unsafe algorithm rejection consistent
-- [x] Add multi-platform CI checks for proto generation
-- [x] Create Poetry/pyproject.toml tasks for Windows compatibility
-- [x] Remove/archive all V1-only code and contracts
-- [x] Bump SDK version to 0.5.0 with proper CHANGELOG entry
-- [x] Update documentation to reflect V2-only support
-- [x] Set default schema_version=2 in codebase
-- [x] Create GitHub Actions matrix for Linux, macOS, and Windows
-- [x] Add CI job for comprehensive cross-platform testing
-- [x] Add CI check that V1 code has been properly removed/archived
-- [x] Add cross-platform compatibility tests
+    Raises:
+        ValueError: If gateway_url is invalid or both api_key and bearer_token are provided
+    """
+    # Always call ensure_grpc_installed which will raise a proper error if needed
+    ensure_grpc_installed()
 
-### Medium Priority (Post-Production)
-- [ ] Add integration tests with real or mocked gRPC service
-- [ ] Add tests for edge-case errors (DEADLINE_EXCEEDED, INVALID_PAYLOAD, UNAUTHORIZED)
-- [ ] Add tests for certificate pinning and CA handling
-- [ ] Refactor large methods (register_did, _create_channel) into smaller helper methods
-- [ ] Audit and fix logging to prevent sensitive data exposure
+    # Validate URL
+    self._validate_gateway_url(gateway_url)
+    self.gateway_url = gateway_url
+    
+    # Get API key and bearer token from environment if not provided
+    # Strip whitespace to handle copy-paste errors
+    self.api_key = (api_key or os.getenv("INTENT_API_KEY", "")).strip() or None
+    self.bearer_token = (bearer_token or os.getenv("INTENT_BEARER_TOKEN", "")).strip() or None
+    
+    # Check for both authentication methods - raise error
+    if self.api_key and self.bearer_token:
+        raise ValueError(
+            "Both API key and bearer token provided. Use only one authentication method. "
+            "API keys are preferred, bearer tokens are deprecated."
+        )
 
-### Low Priority
-- [ ] Remove dead/commented code (JWT block, duplicate imports)
-- [ ] Further improve documentation and comments
+    # Get timeout from env var or parameter (default: 5 seconds)
+    self.timeout = timeout or int(os.environ.get("INTENT_GW_TIMEOUT", "5"))
 
-## Production Rollout Plan
+    # Create gRPC channel and stub
+    self.channel = self._create_channel(gateway_url, verify_ssl)
+    
+    # Create stub for gRPC communication
+    if PROTO_AVAILABLE:
+        self.stub = GatewayServiceStub(self.channel)
+        logger.debug("Using proto-generated GatewayServiceStub")
+    else:
+        logger.warning("Proto stubs not available - using placeholder implementation")
+        self.stub = self._create_stub_placeholder()
 
-1. **Stage 1: Fix Critical Issues** (Target: 2023-05-08) ✅
-   - [x] Fix all issues in the High Priority list
-   - [x] Run cross-platform CI checks
-   - [x] Validate changes with gateway team
+    logger.debug(f"Initialized Gateway client for {gateway_url}")
+```
 
-2. **Stage 2: User Communication** (Target: 2023-05-09)
-   - Prepare "What's Changed" email/communication for users and partners
-   - Highlight V1 deprecation and V2-only support
-   - Document breaking changes, including the version bump
-   - Provide migration guidance for users still on V1
-   - Include timeline for the production deployment
+### 2. Modify _create_metadata()
 
-3. **Stage 3: Deploy and Monitor** (Target: 2023-05-10)
-   - Deploy to production with monitoring
-   - Gather metrics on DID registration success rates
-   - Monitor for any JWT validation or proto issues
-   - Set up alerts for any V2 protocol failures
-   - Provide support channel for migration assistance
+```python
+def _create_metadata(self) -> Optional[Tuple[Tuple[str, str], ...]]:
+    """
+    Create gRPC metadata with authentication.
 
-4. **Stage 4: Post-Production Improvements** (Target: 2023-05-17+)
-   - Address Medium and Low priority tasks
-   - Expand test coverage
-   - Implement logging security enhancements
-   - Collect user feedback for future improvements
+    Returns:
+        Tuple of metadata key-value pairs, or None if no metadata needed.
+    """
+    metadata = []
+    
+    # Prefer API key authentication (primary method)
+    if self.api_key:
+        metadata.append(('authorization', f'Key {self.api_key}'))
+        logger.debug("Using API key authentication")
+    # Fall back to bearer token if provided (deprecated)
+    elif self.bearer_token:
+        metadata.append(('authorization', f'Bearer {self.bearer_token}'))
+        logger.warning(
+            "Using deprecated JWT bearer token authentication. "
+            "API keys are the preferred authentication method."
+        )
+
+    return tuple(metadata) if metadata else None
+```
+
+### 3. Update URL Scheme Parsing and Channel Creation
+
+```python
+def _validate_gateway_url(self, url: str) -> None:
+    """
+    Validate the gateway URL and scheme.
+
+    Args:
+        url: Gateway URL to validate
+
+    Raises:
+        ValueError: If URL is invalid or uses insecure HTTP without explicit permission
+    """
+    try:
+        parsed = urllib.parse.urlparse(url)
+        host = parsed.hostname or ""
+        scheme = parsed.scheme.lower()
+        
+        # Treat localhost/loopback as local development 
+        is_local = host in ("localhost", "127.0.0.1", "::1")
+        
+        # Check for secure schemes (https, grpcs) vs insecure schemes (http, grpc)
+        is_secure_scheme = scheme in ("https", "grpcs")
+        is_insecure_scheme = scheme in ("http", "grpc")
+        
+        if not (is_secure_scheme or is_insecure_scheme):
+            raise ValueError(
+                f"Gateway URL scheme must be one of: https, http, grpcs, grpc (got: {scheme})"
+            )
+            
+        # For non-secure schemes, warn unless explicitly allowed
+        if not is_secure_scheme and not is_local:
+            insecure_allowed = os.environ.get("INTENT_SKIP_TLS_VERIFY") == "true"
+            if not insecure_allowed:
+                raise ValueError(
+                    f"Gateway URL uses insecure scheme ({scheme}://). "
+                    "Set INTENT_SKIP_TLS_VERIFY=true to allow insecure connections "
+                    "(not recommended for production)."
+                )
+            else:
+                logger.warning(
+                    f"SECURITY ALERT: Using insecure scheme ({scheme}://) "
+                    "with INTENT_SKIP_TLS_VERIFY=true. This is not recommended for production!"
+                )
+    except Exception as e:
+        # Catch potential parsing errors too
+        raise ValueError(f"Invalid gateway URL '{url}': {e}")
+
+def _create_channel(self, url: str, verify_ssl: bool) -> grpc.Channel:
+    """
+    Create a gRPC channel based on URL scheme and verify_ssl flag.
+    
+    Args:
+        url: Gateway URL
+        verify_ssl: Whether to verify SSL certificates
+        
+    Returns:
+        gRPC channel
+    """
+    # Parse URL to extract host, port, and scheme
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.hostname
+    scheme = parsed.scheme.lower()
+    
+    # Determine port and security based on scheme
+    if scheme in ('https', 'grpcs'):
+        default_port = 443
+        secure = True
+    else:  # http or grpc
+        default_port = 80
+        secure = False
+    
+    port = parsed.port or default_port
+    target = f"{host}:{port}"
+    
+    # Check for TLS verification override
+    skip_tls_verify = os.environ.get("INTENT_SKIP_TLS_VERIFY") == "true"
+    
+    # Create appropriate channel based on scheme and verification requirements
+    if not secure:
+        # Plaintext channel for http/grpc schemes
+        logger.warning(
+            f"SECURITY ALERT: Creating insecure gRPC channel to {target}. "
+            "This is not recommended for production environments!"
+        )
+        return grpc.insecure_channel(target)
+    elif verify_ssl and not skip_tls_verify:
+        # Fully verified TLS for secure schemes
+        # ... existing secure channel creation logic with roots ...
+        creds = grpc.ssl_channel_credentials()  # Simplified for the plan
+        options = [
+            # ... existing channel options ...
+        ]
+        return grpc.secure_channel(target, creds, options=options)
+    else:
+        # Encrypted but not verified TLS (for dev environments)
+        logger.warning(
+            "SECURITY ALERT: Creating TLS channel without certificate validation. "
+            "This is not recommended for production environments!"
+        )
+        # Create channel with encryption but no certificate validation
+        creds = grpc.ssl_channel_credentials()  # No root certificates = no host verification
+        return grpc.secure_channel(
+            target, 
+            creds, 
+            options=[("grpc.ssl_target_name_override", host)]
+        )
+```
+
+### 4. Add CLI Flags
+
+```python
+@app.callback(invoke_without_command=True)
+def main(
+    ctx: typer.Context,
+    tx_hash: str = typer.Argument(None, help="Transaction hash to verify"),
+    # ...existing options...
+    api_key: str = typer.Option(
+        None, 
+        "--api-key", 
+        help="API key for authentication (preferred)"
+    ),
+    jwt_token: str = typer.Option(
+        None, 
+        "--jwt-token", 
+        help="JWT token for authentication (deprecated)"
+    ),
+    allow_insecure: bool = typer.Option(
+        False, 
+        "--allow-insecure", 
+        help="Allow insecure connections (not recommended for production)"
+    ),
+    # ...other options...
+):
+    """
+    Verify that an IntentEnvelope recorded on-chain matches the JSON envelope stored on IPFS.
+    """
+    # Handle security flags
+    if allow_insecure:
+        os.environ["INTENT_SKIP_TLS_VERIFY"] = "true"
+        if not no_color:
+            typer.echo(
+                typer.style(
+                    "SECURITY WARNING: Insecure connections enabled. Not recommended for production!",
+                    fg=typer.colors.RED, bold=True
+                )
+            )
+        else:
+            typer.echo("SECURITY WARNING: Insecure connections enabled. Not recommended for production!")
+    
+    # Handle authentication options - strip whitespace to handle copy-paste issues
+    if api_key:
+        os.environ["INTENT_API_KEY"] = api_key.strip()
+    if jwt_token:
+        os.environ["INTENT_BEARER_TOKEN"] = jwt_token.strip()
+        
+    # Check for both authentication methods - raise error
+    if os.environ.get("INTENT_API_KEY") and os.environ.get("INTENT_BEARER_TOKEN"):
+        typer.echo(
+            "Error: Both API key and JWT token provided. Use only one authentication method.",
+            err=True
+        )
+        raise typer.Exit(4)
+    
+    # Proceed with verification
+    # ...existing verification logic...
+```
+
+## Testing Plan
+
+Create tests to verify the following scenarios:
+
+1. **Connection scheme tests**:
+   - `grpc://` + API Key → Uses `Key` header and insecure channel
+   - `https://` + API Key → Uses `Key` header and secure channel
+   - `https://` + Bearer token → Uses `Bearer` header and secure channel
+
+2. **Authentication tests**:
+   - Both API key and Bearer token set → Raises ValueError
+   - API key from constructor parameter
+   - API key from environment variable
+   - Bearer token from environment variable (fallback)
+   - Credentials with whitespace are properly trimmed
+
+3. **Security configuration tests**:
+   - `INTENT_SKIP_TLS_VERIFY=true` with secure scheme → Uses secure channel with SSL but no cert validation
+   - Insecure scheme without override → Raises error
+
+## Expected Outcomes
+
+1. SDK successfully connects to gateway with properly secured channels
+2. Authentication headers correctly use `Key` prefix for API keys
+3. JWT token authentication works as fallback when enabled
+4. Security warnings alert users to insecure configurations
+5. Tests pass for all specified scenarios
+6. Documentation clearly explains new authentication flow and environment variables

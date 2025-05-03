@@ -29,33 +29,45 @@ class TestConnectionScheme:
 
     def test_grpc_scheme_requires_override(self):
         """Test that grpc:// scheme requires INTENT_SKIP_TLS_VERIFY=true."""
+        # Import the module first to ensure proper patching
+        from intentlayer_sdk.gateway import client as client_module
+        
         # Without the environment variable, should raise error
         with pytest.raises(ValueError, match="Gateway URL uses insecure scheme"):
             GatewayClient("grpc://gateway.example.com")
 
         # With the environment variable, should work
         with patch.dict(os.environ, {"INTENT_SKIP_TLS_VERIFY": "true"}):
-            with patch("intentlayer_sdk.gateway.client.grpc.insecure_channel") as mock_insecure:
+            with patch.object(client_module.grpc, 'insecure_channel') as mock_insecure:
                 client = GatewayClient("grpc://gateway.example.com")
                 mock_insecure.assert_called_once()
 
     def test_https_uses_secure_channel(self):
         """Test that https:// scheme uses secure_channel."""
-        with patch("intentlayer_sdk.gateway.client.grpc.secure_channel") as mock_secure:
+        # Import the module first to ensure proper patching
+        from intentlayer_sdk.gateway import client as client_module
+        
+        with patch.object(client_module.grpc, 'secure_channel') as mock_secure:
             client = GatewayClient("https://gateway.example.com")
             mock_secure.assert_called_once()
 
     def test_grpcs_uses_secure_channel(self):
         """Test that grpcs:// scheme uses secure_channel."""
-        with patch("intentlayer_sdk.gateway.client.grpc.secure_channel") as mock_secure:
+        # Import the module first to ensure proper patching
+        from intentlayer_sdk.gateway import client as client_module
+        
+        with patch.object(client_module.grpc, 'secure_channel') as mock_secure:
             client = GatewayClient("grpcs://gateway.example.com")
             mock_secure.assert_called_once()
 
     def test_localhost_allows_insecure(self):
         """Test that localhost URLs allow insecure schemes without override."""
+        # Import the module first to ensure proper patching
+        from intentlayer_sdk.gateway import client as client_module
+        
         for scheme in ["http", "grpc"]:
             for host in ["localhost", "127.0.0.1", "::1"]:
-                with patch("intentlayer_sdk.gateway.client.grpc.insecure_channel") as mock_insecure:
+                with patch.object(client_module.grpc, 'insecure_channel') as mock_insecure:
                     client = GatewayClient(f"{scheme}://{host}")
                     mock_insecure.assert_called_once()
 
@@ -69,19 +81,30 @@ class TestConnectionScheme:
 
     def test_skip_tls_verify_uses_secure_with_override(self):
         """Test that INTENT_SKIP_TLS_VERIFY with https creates secure channel with override."""
+        # Import the module first to ensure proper patching
+        from intentlayer_sdk.gateway import client as client_module
+        
+        # Mock ssl_channel_credentials and secure_channel to verify they're called properly
         with patch.dict(os.environ, {"INTENT_SKIP_TLS_VERIFY": "true"}):
-            # First create client, then patch grpc to avoid import timing issues
-            client = GatewayClient("https://gateway.example.com")
-            
-            # Now patch and verify the method was called with the right parameters
-            from intentlayer_sdk.gateway import client as client_module
-            
-            # Check that secure_channel was used (not insecure_channel)
-            assert isinstance(client.channel, client_module.grpc.Channel)
-            
-            # Verify a parameter was passed to ssl_channel_credentials
-            # For ssl_target_name_override, we'd need to inspect the actual options
-            # which isn't easily accessible in the mocked object after the fact
+            with patch.object(client_module.grpc, 'ssl_channel_credentials') as mock_creds:
+                with patch.object(client_module.grpc, 'secure_channel') as mock_secure:
+                    # Set the return value for channel to track what options were passed
+                    mock_channel = MagicMock()
+                    mock_secure.return_value = mock_channel
+                    
+                    # Create the client, which will use our mocked functions
+                    client = GatewayClient("https://gateway.example.com")
+                    
+                    # Verify ssl_channel_credentials was called with root_certificates=None
+                    mock_creds.assert_called_once_with(root_certificates=None)
+                    
+                    # Verify secure_channel was called (instead of insecure_channel)
+                    mock_secure.assert_called_once()
+                    
+                    # Verify ssl_target_name_override was included in options
+                    options = mock_secure.call_args[0][2]
+                    assert any(opt[0] == "grpc.ssl_target_name_override" for opt in options), \
+                        "ssl_target_name_override option not found in channel options"
 
 
 class TestAuthenticationMethods:

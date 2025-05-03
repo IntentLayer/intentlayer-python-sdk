@@ -617,9 +617,10 @@ def main(
     # Otherwise, run the verification directly
     verify_tx(tx_hash, gateway, gateway_token, network, no_color, debug)
 
-# Legacy command for backward compatibility if needed
+# Legacy command for backward compatibility, forwards to main callback
 @app.command(hidden=True)
 def tx(
+    ctx: typer.Context,
     tx_hash: str = typer.Argument(..., help="Transaction hash to verify"),
     gateway: str = typer.Option(
         "https://w3s.link/ipfs/", 
@@ -663,11 +664,8 @@ def tx(
     ),
 ):
     """Legacy command for verifying transaction hashes."""
-    # Handle security flags and authentication
-    handle_security_flags(allow_insecure, gateway, no_color)
-    handle_authentication(api_key, jwt_token)
-        
-    verify_tx(tx_hash, gateway, gateway_token, network, no_color, debug)
+    # Forward to main callback, preventing drift between implementations
+    ctx.forward(main)
 
 if __name__ == "__main__":
     app()

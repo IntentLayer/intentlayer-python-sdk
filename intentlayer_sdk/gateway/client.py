@@ -617,6 +617,8 @@ class GatewayClient:
     def _rate_limited_log(self, message: str, level: str = "warning", interval: int = 60) -> None:
         """
         Log a message with rate limiting.
+        
+        Delegates to the shared implementation in _rate_limited_log.py.
 
         Args:
             message: Message to log
