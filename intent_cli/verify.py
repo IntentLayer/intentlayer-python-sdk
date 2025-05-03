@@ -497,6 +497,21 @@ def main(
         "--network", 
         help="Specific network to use (default: auto-detect)"
     ),
+    api_key: str = typer.Option(
+        None, 
+        "--api-key", 
+        help="API key for authentication (preferred)"
+    ),
+    jwt_token: str = typer.Option(
+        None, 
+        "--jwt-token", 
+        help="JWT token for authentication (deprecated)"
+    ),
+    allow_insecure: bool = typer.Option(
+        False, 
+        "--allow-insecure", 
+        help="Allow insecure connections (not recommended for production)"
+    ),
     no_color: bool = typer.Option(
         False, 
         "--no-color", 
@@ -521,6 +536,34 @@ def main(
     # If this is called with a subcommand, just return
     if ctx.invoked_subcommand is not None:
         return
+    
+    # Handle security flags
+    if allow_insecure:
+        os.environ["INTENT_SKIP_TLS_VERIFY"] = "true"
+        # Print warning in color if supported
+        if not no_color and should_use_color():
+            typer.echo(
+                typer.style(
+                    "SECURITY WARNING: Insecure connections enabled. Not recommended for production!",
+                    fg=typer.colors.RED, bold=True
+                )
+            )
+        else:
+            typer.echo("SECURITY WARNING: Insecure connections enabled. Not recommended for production!")
+    
+    # Handle authentication options - strip whitespace to handle copy-paste issues
+    if api_key:
+        os.environ["INTENT_API_KEY"] = api_key.strip()
+    if jwt_token:
+        os.environ["INTENT_BEARER_TOKEN"] = jwt_token.strip()
+        
+    # Check for both authentication methods - raise error
+    if os.environ.get("INTENT_API_KEY") and os.environ.get("INTENT_BEARER_TOKEN"):
+        typer.echo(
+            "Error: Both API key and JWT token provided. Use only one authentication method.",
+            err=True
+        )
+        raise typer.Exit(4)
         
     # If no tx_hash is provided, show help
     if not tx_hash:
@@ -549,6 +592,21 @@ def tx(
         "--network", 
         help="Specific network to use (default: auto-detect)"
     ),
+    api_key: str = typer.Option(
+        None, 
+        "--api-key", 
+        help="API key for authentication (preferred)"
+    ),
+    jwt_token: str = typer.Option(
+        None, 
+        "--jwt-token", 
+        help="JWT token for authentication (deprecated)"
+    ),
+    allow_insecure: bool = typer.Option(
+        False, 
+        "--allow-insecure", 
+        help="Allow insecure connections (not recommended for production)"
+    ),
     no_color: bool = typer.Option(
         False, 
         "--no-color", 
@@ -561,6 +619,34 @@ def tx(
     ),
 ):
     """Legacy command for verifying transaction hashes."""
+    # Handle security flags
+    if allow_insecure:
+        os.environ["INTENT_SKIP_TLS_VERIFY"] = "true"
+        # Print warning in color if supported
+        if not no_color and should_use_color():
+            typer.echo(
+                typer.style(
+                    "SECURITY WARNING: Insecure connections enabled. Not recommended for production!",
+                    fg=typer.colors.RED, bold=True
+                )
+            )
+        else:
+            typer.echo("SECURITY WARNING: Insecure connections enabled. Not recommended for production!")
+    
+    # Handle authentication options
+    if api_key:
+        os.environ["INTENT_API_KEY"] = api_key.strip()
+    if jwt_token:
+        os.environ["INTENT_BEARER_TOKEN"] = jwt_token.strip()
+        
+    # Check for both authentication methods - raise error
+    if os.environ.get("INTENT_API_KEY") and os.environ.get("INTENT_BEARER_TOKEN"):
+        typer.echo(
+            "Error: Both API key and JWT token provided. Use only one authentication method.",
+            err=True
+        )
+        raise typer.Exit(4)
+        
     verify_tx(tx_hash, gateway, gateway_token, network, no_color, debug)
 
 if __name__ == "__main__":

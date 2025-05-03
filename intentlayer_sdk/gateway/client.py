@@ -291,6 +291,7 @@ class GatewayClient:
         self,
         gateway_url: str,
         api_key: Optional[str] = None,
+        bearer_token: Optional[str] = None,
         timeout: Optional[int] = None,
         verify_ssl: bool = True
     ):
@@ -299,12 +300,13 @@ class GatewayClient:
 
         Args:
             gateway_url: URL of the gateway service
-            api_key: Optional API key for authentication
+            api_key: Optional API key for authentication (preferred)
+            bearer_token: Optional JWT token for authentication (deprecated)
             timeout: Request timeout in seconds
             verify_ssl: Whether to verify SSL certificates
 
         Raises:
-            ValueError: If gateway_url is invalid or uses insecure HTTP
+            ValueError: If gateway_url is invalid or both api_key and bearer_token are provided
             ImportError: If gRPC dependencies are not installed
         """
         # Always call ensure_grpc_installed which will raise a proper error if needed
@@ -313,7 +315,18 @@ class GatewayClient:
         # Validate URL
         self._validate_gateway_url(gateway_url)
         self.gateway_url = gateway_url
-        self.api_key = api_key
+        
+        # Get API key and bearer token from environment if not provided
+        # Strip whitespace to handle copy-paste errors
+        self.api_key = (api_key or os.getenv("INTENT_API_KEY", "")).strip() or None
+        self.bearer_token = (bearer_token or os.getenv("INTENT_BEARER_TOKEN", "")).strip() or None
+        
+        # Check for both authentication methods - raise error
+        if self.api_key and self.bearer_token:
+            raise ValueError(
+                "Both API key and bearer token provided. Use only one authentication method. "
+                "API keys are preferred, bearer tokens are deprecated."
+            )
 
         # Get timeout from env var or parameter (default: 5 seconds)
         self.timeout = timeout or int(os.environ.get("INTENT_GW_TIMEOUT", "5"))
@@ -336,27 +349,48 @@ class GatewayClient:
 
     def _validate_gateway_url(self, url: str) -> None:
         """
-        Validate the gateway URL is secure.
+        Validate the gateway URL and scheme.
 
         Args:
             url: Gateway URL to validate
 
         Raises:
-            ValueError: If URL is invalid or uses insecure HTTP
+            ValueError: If URL is invalid or uses insecure scheme without explicit permission
         """
         try:
             parsed = urllib.parse.urlparse(url)
             host = parsed.hostname or ""
-            # Treat loopback IPv6 address as local as well
+            scheme = parsed.scheme.lower()
+            
+            # Treat localhost/loopback as local development 
             is_local = host in ("localhost", "127.0.0.1", "::1")
-
-            # Check for HTTPS unless explicitly allowed insecure or it's a local address
-            if parsed.scheme != "https" and not is_local:
-                insecure_allowed = os.environ.get("INTENT_INSECURE_GW") == "1"
+            
+            # Check for secure schemes (https, grpcs) vs insecure schemes (http, grpc)
+            is_secure_scheme = scheme in ("https", "grpcs")
+            is_insecure_scheme = scheme in ("http", "grpc")
+            
+            if not (is_secure_scheme or is_insecure_scheme):
+                raise ValueError(
+                    f"Gateway URL scheme must be one of: https, http, grpcs, grpc (got: {scheme})"
+                )
+                
+            # For non-secure schemes, warn unless explicitly allowed or it's local
+            if not is_secure_scheme and not is_local:
+                # Check both new and legacy environment variables
+                skip_tls_verify = os.environ.get("INTENT_SKIP_TLS_VERIFY") == "true"
+                legacy_insecure = os.environ.get("INTENT_INSECURE_GW") == "1"
+                insecure_allowed = skip_tls_verify or legacy_insecure
+                
                 if not insecure_allowed:
                     raise ValueError(
-                        f"Gateway URL must use HTTPS for security (got: {parsed.scheme}://). "
-                        "Set INTENT_INSECURE_GW=1 to allow HTTP for development."
+                        f"Gateway URL uses insecure scheme ({scheme}://). "
+                        "Set INTENT_SKIP_TLS_VERIFY=true to allow insecure connections "
+                        "(not recommended for production)."
+                    )
+                else:
+                    logger.warning(
+                        f"SECURITY ALERT: Using insecure scheme ({scheme}://) "
+                        "with INTENT_SKIP_TLS_VERIFY=true. This is not recommended for production!"
                     )
         except Exception as e:
             # Catch potential parsing errors too
@@ -364,34 +398,69 @@ class GatewayClient:
 
     def _create_channel(self, url: str, verify_ssl: bool) -> grpc.Channel:
         """
-        Create a secure gRPC channel with optional custom CA.
-
+        Create a gRPC channel based on URL scheme and verify_ssl flag.
+        
         Args:
             url: Gateway URL
             verify_ssl: Whether to verify SSL certificates
-
+            
         Returns:
             gRPC channel
         """
         # Ensure grpc is imported (this will pick up the mock from sys.modules in tests)
         import grpc as _grpc_runtime # Use a different alias to avoid confusion
-        # Parse URL to extract host and port
+        
+        # Parse URL to extract host, port, and scheme
         parsed = urllib.parse.urlparse(url)
         host = parsed.hostname
-        # Default to port 443 for https, 80 for http if not specified
-        default_port = 443 if parsed.scheme == 'https' else 80
+        scheme = parsed.scheme.lower()
+        
+        # Determine port and security based on scheme
+        if scheme in ('https', 'grpcs'):
+            default_port = 443
+            secure = True
+        else:  # http or grpc
+            default_port = 80
+            secure = False
+        
         port = parsed.port or default_port
         target = f"{host}:{port}"
-
+        
+        # Check for TLS verification override
+        skip_tls_verify = os.environ.get("INTENT_SKIP_TLS_VERIFY") == "true"
+        legacy_insecure = os.environ.get("INTENT_INSECURE_GW") == "1"
+        
         # Handle custom CA certificate if provided
         # By default, INTENT_GATEWAY_CA replaces system roots unless INTENT_GATEWAY_APPEND_CA=1
         ca_path = os.environ.get("INTENT_GATEWAY_CA")
         strict_ca = os.environ.get("INTENT_GATEWAY_STRICT_CA") == "1"
         append_ca = os.environ.get("INTENT_GATEWAY_APPEND_CA") == "1"
+        
+        # Standard gRPC options for performance
+        options = [
+            # Keepalive settings
+            ('grpc.keepalive_time_ms', 30000),  # 30 seconds
+            ('grpc.keepalive_timeout_ms', 10000),  # 10 seconds
+            ('grpc.http2.max_pings_without_data', 0), # Allow pings even without data
+            ('grpc.http2.min_time_between_pings_ms', 10000), # Minimum 10s between pings
 
-        creds = None # Initialize creds
-
-        if verify_ssl:
+            # Message size limits (10 MB for future batched envelopes)
+            ('grpc.max_send_message_length', 10 * 1024 * 1024),     # 10 MB
+            ('grpc.max_receive_message_length', 10 * 1024 * 1024),  # 10 MB
+        ]
+        
+        # Handle different channel types based on scheme and security settings
+        if not secure:
+            # Plaintext channel for http/grpc schemes
+            logger.warning(
+                f"SECURITY ALERT: Creating insecure gRPC channel to {target}. "
+                "This is not recommended for production environments!"
+            )
+            return _grpc_runtime.insecure_channel(target, options=options)
+        elif verify_ssl and not (skip_tls_verify or legacy_insecure):
+            # Fully verified TLS for secure schemes
+            creds = None  # Initialize creds
+            
             if ca_path:
                 try:
                     with open(ca_path, 'rb') as f:
@@ -431,28 +500,20 @@ class GatewayClient:
                     # Fallback to default credentials if not strict
                     creds = _grpc_runtime.ssl_channel_credentials()
             else:
-                 # Standard SSL credentials with system roots if no custom CA path
+                # Standard SSL credentials with system roots if no custom CA path
                 creds = _grpc_runtime.ssl_channel_credentials()
-
-            # Create secure channel with proper options for performance
-            options = [
-                # Keepalive settings
-                ('grpc.keepalive_time_ms', 30000),  # 30 seconds
-                ('grpc.keepalive_timeout_ms', 10000),  # 10 seconds
-                ('grpc.http2.max_pings_without_data', 0), # Allow pings even without data
-                ('grpc.http2.min_time_between_pings_ms', 10000), # Minimum 10s between pings
-
-                # Message size limits (10 MB for future batched envelopes)
-                ('grpc.max_send_message_length', 10 * 1024 * 1024),     # 10 MB
-                ('grpc.max_receive_message_length', 10 * 1024 * 1024),  # 10 MB
-            ]
+                
             return _grpc_runtime.secure_channel(target, creds, options=options)
-
         else:
-            # Insecure channel (for development only)
-            logger.warning(f"Creating insecure gRPC channel to {target} (not recommended for production)")
-            # No creds needed for insecure channel
-            return _grpc_runtime.insecure_channel(target)
+            # Encrypted but not verified TLS (for dev environments)
+            logger.warning(
+                "SECURITY ALERT: Creating TLS channel without certificate validation. "
+                "This is not recommended for production environments!"
+            )
+            # Create channel with encryption but no certificate validation
+            creds = _grpc_runtime.ssl_channel_credentials()  # No root certificates specified = no host verification
+            options.append(("grpc.ssl_target_name_override", host))
+            return _grpc_runtime.secure_channel(target, creds, options=options)
 
 
     def _create_stub_placeholder(self):
@@ -549,93 +610,18 @@ class GatewayClient:
             Tuple of metadata key-value pairs, or None if no metadata needed.
         """
         metadata = []
+        
+        # Prefer API key authentication (primary method)
         if self.api_key:
-            # Determine environment tier for JWT validation rules
-            env_tier = os.environ.get("INTENT_ENV_TIER", "production").lower()
-            jwt_secret = os.environ.get("INTENT_JWT_SECRET")
-            
-            # Validate JWT token before using it
-            try:
-                # Check JWT header
-                try:
-                    header = jwt.get_unverified_header(self.api_key)
-                except jwt.DecodeError:
-                    logger.warning("Invalid JWT format in API key - could not decode header")
-                    # Still include it in metadata, but log the warning
-                    metadata.append(('authorization', f'Bearer {self.api_key}'))
-                    return tuple(metadata) if metadata else None
-                
-                # Always reject unsafe algorithms
-                algorithm = header.get("alg", "")
-                if algorithm.lower() in ("none", ""):
-                    logger.warning(f"Unsafe JWT algorithm: {algorithm}. API key will not be trusted.")
-                    # Still include it in metadata, but log the warning
-                    metadata.append(('authorization', f'Bearer {self.api_key}'))
-                    return tuple(metadata) if metadata else None
-                
-                # Validate differently based on environment tier
-                if env_tier == "production":
-                    # Production: Enforce HS256 + signature verification
-                    if algorithm != "HS256":
-                        logger.warning(f"Production environment requires HS256 algorithm, got: {algorithm}")
-                    elif jwt_secret:
-                        try:
-                            # Verify expiration and signature
-                            decoded = jwt.decode(
-                                self.api_key, 
-                                jwt_secret, 
-                                algorithms=["HS256"],
-                                options={"verify_signature": True, "verify_exp": True}
-                            )
-                            logger.info("API key signature verified successfully (production mode)")
-                            
-                            # Check additional claims if needed
-                            if "org_id" not in decoded:
-                                logger.warning("API key is missing org_id claim")
-                                
-                        except jwt.ExpiredSignatureError:
-                            logger.error("API key has expired")
-                        except jwt.InvalidSignatureError:
-                            logger.error("API key has invalid signature")
-                        except Exception as e:
-                            logger.error(f"API key validation failed: {e}")
-                    else:
-                        logger.warning("Production environment requires INTENT_JWT_SECRET for API key validation")
-                
-                elif env_tier == "test":
-                    # Test: Check format and expiration, but allow different algorithms
-                    try:
-                        # Don't verify signature but check other claims
-                        decoded = jwt.decode(
-                            self.api_key,
-                            options={"verify_signature": False, "verify_exp": True}
-                        )
-                        logger.info(f"API key format valid in test environment (algorithm: {algorithm})")
-                        
-                        # Still warn if org_id is missing
-                        if "org_id" not in decoded:
-                            logger.warning("API key is missing org_id claim")
-                            
-                    except jwt.ExpiredSignatureError:
-                        logger.warning("API key has expired (test environment)")
-                    except Exception as e:
-                        logger.warning(f"API key validation warning (test environment): {e}")
-                
-                else:
-                    # Dev: Minimal validation
-                    try:
-                        # Just check that it's decodable
-                        jwt.decode(self.api_key, options={"verify_signature": False, "verify_exp": False})
-                        logger.debug("API key format valid (development environment)")
-                    except Exception as e:
-                        logger.debug(f"API key validation issue (development environment): {e}")
-            
-            except Exception as e:
-                # Catch-all for any unexpected JWT validation errors
-                logger.warning(f"Unexpected error validating API key: {e}")
-            
-            # Always include the API key in metadata
-            metadata.append(('authorization', f'Bearer {self.api_key}'))
+            metadata.append(('authorization', f'Key {self.api_key}'))
+            logger.debug("Using API key authentication")
+        # Fall back to bearer token if provided (deprecated)
+        elif self.bearer_token:
+            metadata.append(('authorization', f'Bearer {self.bearer_token}'))
+            logger.warning(
+                "Using deprecated JWT bearer token authentication. "
+                "API keys are the preferred authentication method."
+            )
 
         return tuple(metadata) if metadata else None # Return None if empty
 

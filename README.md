@@ -74,7 +74,8 @@ from intentlayer_sdk import (
 # 1. Environment
 PINNER_URL = os.getenv("PINNER_URL", "https://pin.example.com")
 GATEWAY_URL = os.getenv("INTENT_GATEWAY_URL", "https://gateway.example.com")
-# Optional: INTENT_API_KEY with org_id claim for DID registration
+# Optional: Set API key for gateway authentication
+# export INTENT_API_KEY=sk_live_123456
 
 # 2. Initialize client using network configuration with auto-DID
 client = IntentClient.from_network(
@@ -183,21 +184,88 @@ client.send_intent(envelope.hex_hash(), {"prompt": "...", "envelope": envelope.m
 - The SDK enforces HTTPS for RPC, pinner, and Gateway URLs in production (localhost/127.0.0.1 are exempt).
 - **Be aware that your DID and Ethereum address are deterministically linked** for transparency and verification.
 
+### 🔑 Authentication & Connection Security
+
+#### API Key Authentication (Recommended)
+
+The SDK uses API keys for authentication with the Gateway. You can provide your API key in one of two ways:
+
+```python
+# Option 1: Constructor parameter
+client = IntentClient.from_network(
+    network="zksync-era-sepolia",
+    gateway_url="https://gateway.example.com",
+    api_key="sk_live_123456"
+)
+
+# Option 2: Environment variable
+# export INTENT_API_KEY=sk_live_123456
+client = IntentClient.from_network(
+    network="zksync-era-sepolia",
+    gateway_url="https://gateway.example.com"
+)
+```
+
+The Kong Konnect service automatically maps your API key to your organization ID - no additional configuration is needed.
+
+#### URL Schemes and Security
+
+The SDK supports multiple URL schemes for connecting to the gateway:
+
+| Scheme | Connection | Security |
+|--------|------------|----------|
+| `https://` | Secure | TLS encryption with certificate validation |
+| `grpcs://` | Secure | TLS encryption with certificate validation |
+| `http://` | Insecure | No encryption (requires override) |
+| `grpc://` | Insecure | No encryption (requires override) |
+
+By default, insecure connections (`http://` and `grpc://`) are not allowed for non-localhost hosts. You can enable them for development purposes by setting the `INTENT_SKIP_TLS_VERIFY` environment variable:
+
+```bash
+export INTENT_SKIP_TLS_VERIFY=true
+```
+
+**Note:** Using insecure connections is not recommended for production environments.
+
+#### JWT Authentication (Deprecated)
+
+The SDK also provides fallback support for JWT token authentication:
+
+```python
+# Option 1: Constructor parameter
+client = IntentClient.from_network(
+    network="zksync-era-sepolia",
+    gateway_url="https://gateway.example.com", 
+    bearer_token="eyJhbGciOiJIUzI1NiJ9..."
+)
+
+# Option 2: Environment variable
+# export INTENT_BEARER_TOKEN=eyJhbGciOiJIUzI1NiJ9...
+client = IntentClient.from_network(
+    network="zksync-era-sepolia",
+    gateway_url="https://gateway.example.com"
+)
+```
+
+**Note:** JWT authentication is deprecated and only works with gateway builds that enable `--enable-jwt-fallback`.
+
 ## 🔧 Environment Variables
 
-| Variable              | Description                                        | Default               |
-|-----------------------|----------------------------------------------------|------------------------|
-| `INTENT_GATEWAY_URL`  | URL for the Gateway service                        | None                  |
-| `INTENT_API_KEY`      | JWT token for Gateway authentication (HS256)       | None                  |
-| `INTENT_AUTO_DID`     | Enable/disable auto-DID provisioning               | true                  |
-| `INTENT_INSECURE_GW`  | Allow HTTP Gateway URLs (development only)         | false                 |
-| `INTENT_GW_TIMEOUT`   | Gateway request timeout in seconds                 | 5                     |
-| `INTENT_SCHEMA_VERSION` | Schema version for DID registration               | 2                     |
-| `INTENT_KEY_STORE_PATH` | Path to the identity key store                   | ~/.intentlayer/keys.json |
-| `INTENT_GATEWAY_CA`   | Path to custom CA certificate for Gateway TLS      | None                  |
-| `INTENT_LOCK_STRATEGY` | Locking strategy ("file" or "redis")              | "file"                |
-| `INTENT_REDIS_URL`    | Redis URL for distributed locking                  | None                  |
-| `INTENT_ENV_TIER`     | Environment tier ("production", "test", "development") | "production"       |
+| Variable                  | Description                                        | Default               |
+|---------------------------|----------------------------------------------------|------------------------|
+| `INTENT_GATEWAY_URL`      | URL for the Gateway service                        | None                  |
+| `INTENT_API_KEY`          | API key for Gateway authentication (preferred)     | None                  |
+| `INTENT_BEARER_TOKEN`     | JWT token for Gateway authentication (deprecated)  | None                  |
+| `INTENT_AUTO_DID`         | Enable/disable auto-DID provisioning               | true                  |
+| `INTENT_SKIP_TLS_VERIFY`  | Skip TLS certificate validation (development only) | false                 |
+| `INTENT_INSECURE_GW`      | Allow HTTP Gateway URLs (legacy, deprecated)       | false                 |
+| `INTENT_GW_TIMEOUT`       | Gateway request timeout in seconds                 | 5                     |
+| `INTENT_SCHEMA_VERSION`   | Schema version for DID registration                | 2                     |
+| `INTENT_KEY_STORE_PATH`   | Path to the identity key store                     | ~/.intentlayer/keys.json |
+| `INTENT_GATEWAY_CA`       | Path to custom CA certificate for Gateway TLS      | None                  |
+| `INTENT_LOCK_STRATEGY`    | Locking strategy ("file" or "redis")               | "file"                |
+| `INTENT_REDIS_URL`        | Redis URL for distributed locking                  | None                  |
+| `INTENT_ENV_TIER`         | Environment tier ("production", "test", "development") | "production"       |
 
 ---
 
@@ -216,6 +284,9 @@ client.send_intent(envelope.hex_hash(), {"prompt": "...", "envelope": envelope.m
 | `logger`           | `logging.Logger`     | No                   | Custom logger instance                                   |
 | `auto_did`         | `bool` (default=True)| No                   | Whether to automatically create and use DID identity     |
 | `gateway_url`      | `str`                | No                   | URL of the Gateway service for DID registration          |
+| `api_key`          | `str`                | No                   | API key for Gateway authentication (preferred)           |
+| `bearer_token`     | `str`                | No                   | JWT token for Gateway authentication (deprecated)        |
+| `verify_ssl`       | `bool` (default=True)| No                   | Whether to verify SSL certificates for Gateway           |
 
 ### `IntentClient(...)` (Legacy constructor)
 
