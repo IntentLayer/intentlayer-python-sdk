@@ -6,6 +6,7 @@ This module implements the 'verify' command which verifies that the hash of the 
 envelope stored on IPFS matches the hash recorded on-chain.
 """
 import sys
+import os
 import json
 import difflib
 import logging
@@ -287,6 +288,73 @@ def should_use_color() -> bool:
     # Check if stdout is a TTY
     return sys.stdout.isatty()
 
+
+def handle_security_flags(allow_insecure, gateway_url=None, no_color=False):
+    """
+    Handle security flags and print appropriate warnings.
+    
+    Args:
+        allow_insecure: Whether insecure connections are allowed
+        gateway_url: Optional URL of the gateway service
+        no_color: Whether to disable colored output
+        
+    Returns:
+        None
+    """
+    if allow_insecure:
+        os.environ["INTENT_SKIP_TLS_VERIFY"] = "true"
+        
+        # Determine if it's plaintext or encrypted with relaxed verification
+        is_plaintext = False
+        if gateway_url:
+            try:
+                parsed = urllib.parse.urlparse(gateway_url)
+                is_plaintext = parsed.scheme in ("http", "grpc", "intent+grpc")
+            except Exception:
+                # If parsing fails, default to generic message
+                pass
+        
+        # Choose appropriate warning message
+        if is_plaintext:
+            warning = "SECURITY WARNING: Traffic is UNENCRYPTED. Not recommended for production!"
+        else:
+            warning = "SECURITY WARNING: TLS certificate verification disabled; traffic still encrypted. Not recommended for production!"
+        
+        # Print warning with color if supported
+        if not no_color and should_use_color():
+            typer.echo(typer.style(warning, fg=typer.colors.RED, bold=True))
+        else:
+            typer.echo(warning)
+
+
+def handle_authentication(api_key=None, jwt_token=None):
+    """
+    Handle authentication parameters and environment variables.
+    
+    Args:
+        api_key: Optional API key for authentication
+        jwt_token: Optional JWT token for authentication
+        
+    Returns:
+        None
+        
+    Raises:
+        typer.Exit: If both API key and JWT token are provided
+    """
+    # Handle authentication options - strip whitespace to handle copy-paste issues
+    if api_key:
+        os.environ["INTENT_API_KEY"] = api_key.strip()
+    if jwt_token:
+        os.environ["INTENT_BEARER_TOKEN"] = jwt_token.strip()
+        
+    # Check for both authentication methods - raise error
+    if os.environ.get("INTENT_API_KEY") and os.environ.get("INTENT_BEARER_TOKEN"):
+        typer.echo(
+            "Error: Both API key and JWT token provided. Use only one authentication method.",
+            err=True
+        )
+        raise typer.Exit(4)
+
 def verify_tx(
     tx_hash: str,
     gateway: str,
@@ -497,6 +565,21 @@ def main(
         "--network", 
         help="Specific network to use (default: auto-detect)"
     ),
+    api_key: str = typer.Option(
+        None, 
+        "--api-key", 
+        help="API key for authentication (preferred)"
+    ),
+    jwt_token: str = typer.Option(
+        None, 
+        "--jwt-token", 
+        help="JWT token for authentication (deprecated)"
+    ),
+    allow_insecure: bool = typer.Option(
+        False, 
+        "--allow-insecure", 
+        help="Allow insecure connections (not recommended for production)"
+    ),
     no_color: bool = typer.Option(
         False, 
         "--no-color", 
@@ -521,6 +604,10 @@ def main(
     # If this is called with a subcommand, just return
     if ctx.invoked_subcommand is not None:
         return
+    
+    # Handle security flags and authentication
+    handle_security_flags(allow_insecure, gateway, no_color)
+    handle_authentication(api_key, jwt_token)
         
     # If no tx_hash is provided, show help
     if not tx_hash:
@@ -530,9 +617,10 @@ def main(
     # Otherwise, run the verification directly
     verify_tx(tx_hash, gateway, gateway_token, network, no_color, debug)
 
-# Legacy command for backward compatibility if needed
+# Legacy command for backward compatibility, forwards to main callback
 @app.command(hidden=True)
 def tx(
+    ctx: typer.Context,
     tx_hash: str = typer.Argument(..., help="Transaction hash to verify"),
     gateway: str = typer.Option(
         "https://w3s.link/ipfs/", 
@@ -549,6 +637,21 @@ def tx(
         "--network", 
         help="Specific network to use (default: auto-detect)"
     ),
+    api_key: str = typer.Option(
+        None, 
+        "--api-key", 
+        help="API key for authentication (preferred)"
+    ),
+    jwt_token: str = typer.Option(
+        None, 
+        "--jwt-token", 
+        help="JWT token for authentication (deprecated)"
+    ),
+    allow_insecure: bool = typer.Option(
+        False, 
+        "--allow-insecure", 
+        help="Allow insecure connections (not recommended for production)"
+    ),
     no_color: bool = typer.Option(
         False, 
         "--no-color", 
@@ -561,7 +664,8 @@ def tx(
     ),
 ):
     """Legacy command for verifying transaction hashes."""
-    verify_tx(tx_hash, gateway, gateway_token, network, no_color, debug)
+    # Forward to main callback, preventing drift between implementations
+    ctx.forward(main)
 
 if __name__ == "__main__":
     app()

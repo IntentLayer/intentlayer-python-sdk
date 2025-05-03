@@ -11,6 +11,8 @@ from unittest.mock import patch, MagicMock, mock_open, ANY
 # We need to mock these modules before importing the client
 # Define mock_grpc globally so it can be referenced in tests
 mock_grpc = MagicMock()
+# Add __version__ attribute to fix gateway_pb2_grpc import
+mock_grpc.__version__ = "1.71.0"
 
 with patch("intentlayer_sdk.gateway._deps.ensure_grpc_installed") as mock_ensure_grpc:
     # --- Mock RpcError and StatusCode directly on the mock_grpc object ---
@@ -93,28 +95,25 @@ class TestGatewayClient:
 
             # Test with localhost (HTTP allowed)
             local_mock_grpc.reset_mock() # Reset mock for next instantiation
-            client = GatewayClient("http://localhost:8080")
+            client = GatewayClient("http://localhost:8080", verify_ssl=False)
             assert client.gateway_url == "http://localhost:8080"
-            # Client logic uses secure_channel by default, even for localhost HTTP
-            # unless verify_ssl=False is passed.
-            local_mock_grpc.secure_channel.assert_called_once()
-            local_mock_grpc.insecure_channel.assert_not_called()
+            # With verify_ssl=False, should call insecure_channel for localhost HTTP
+            local_mock_grpc.insecure_channel.assert_called_once()
+            local_mock_grpc.secure_channel.assert_not_called()
 
 
             # Test with insecure HTTP URL should raise error (no env var)
-            with pytest.raises(ValueError, match="Gateway URL must use HTTPS for security"):
+            with pytest.raises(ValueError, match="Gateway URL uses insecure scheme"):
                 GatewayClient("http://insecure.example.com")
 
             # Test with insecure HTTP but environment override
-            with patch.dict(os.environ, {"INTENT_INSECURE_GW": "1"}):
+            with patch.dict(os.environ, {"INTENT_SKIP_TLS_VERIFY": "true"}):
                 local_mock_grpc.reset_mock()
                 client = GatewayClient("http://insecure-allowed.example.com")
                 assert client.gateway_url == "http://insecure-allowed.example.com"
-                # FIX: Even with INTENT_INSECURE_GW=1, the default verify_ssl=True
-                # means secure_channel is still attempted by _create_channel.
-                # The env var only bypasses the _validate_gateway_url check.
-                local_mock_grpc.secure_channel.assert_called_once()
-                local_mock_grpc.insecure_channel.assert_not_called()
+                # With INTENT_SKIP_TLS_VERIFY=true, should call insecure_channel
+                local_mock_grpc.insecure_channel.assert_called_once()
+                local_mock_grpc.secure_channel.assert_not_called()
 
 
     @patch("intentlayer_sdk.gateway._deps.ensure_grpc_installed")
