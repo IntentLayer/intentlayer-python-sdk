@@ -11,6 +11,10 @@ from unittest.mock import patch, MagicMock
 # If proto stubs are available, import classes for the fixtures
 try:
     import grpc
+    # Ensure grpc.__version__ exists for gateway_pb2_grpc import
+    if not hasattr(grpc, '__version__'):
+        grpc.__version__ = "1.71.0"  # Use the version from pyproject.toml
+    
     from intentlayer_sdk.gateway.proto import (
         PROTO_AVAILABLE,
         RegisterError as ProtoRegisterError,

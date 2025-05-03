@@ -214,7 +214,8 @@ class TestGatewayClientIntegration:
         for key, value in kwargs["metadata"]:
             if key == "authorization":
                 auth_found = True
-                assert value == f"Bearer {test_api_key}"
+                # API key should use "Key" prefix, not "Bearer"
+                assert value == f"Key {test_api_key}"
                 break
         
         assert auth_found, "Authorization metadata not found"

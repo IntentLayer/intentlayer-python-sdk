@@ -388,23 +388,31 @@ class GatewayClient:
                 )
                 
             # For non-secure schemes, warn unless explicitly allowed or it's local
-            if not is_secure_scheme and not is_local:
-                # Check both new and legacy environment variables
-                skip_tls_verify = os.environ.get("INTENT_SKIP_TLS_VERIFY") == "true"
-                legacy_insecure = os.environ.get("INTENT_INSECURE_GW") == "1"
-                insecure_allowed = skip_tls_verify or legacy_insecure
-                
-                if not insecure_allowed:
-                    raise ValueError(
-                        f"Gateway URL uses insecure scheme ({scheme}://). "
-                        "Set INTENT_SKIP_TLS_VERIFY=true to allow insecure connections "
-                        "(not recommended for production)."
-                    )
-                else:
+            if not is_secure_scheme:
+                # Local hosts are always allowed to use insecure schemes
+                if is_local:
                     logger.warning(
                         f"SECURITY ALERT: Using insecure scheme ({scheme}://) "
-                        "with INTENT_SKIP_TLS_VERIFY=true. This is not recommended for production!"
+                        f"with localhost ({host}). This should only be used for local development!"
                     )
+                else:
+                    # Non-local hosts need explicit permission for insecure schemes
+                    # Check both new and legacy environment variables
+                    skip_tls_verify = os.environ.get("INTENT_SKIP_TLS_VERIFY") == "true"
+                    legacy_insecure = os.environ.get("INTENT_INSECURE_GW") == "1"
+                    insecure_allowed = skip_tls_verify or legacy_insecure
+                    
+                    if not insecure_allowed:
+                        raise ValueError(
+                            f"Gateway URL uses insecure scheme ({scheme}://). "
+                            "Set INTENT_SKIP_TLS_VERIFY=true to allow insecure connections "
+                            "(not recommended for production)."
+                        )
+                    else:
+                        logger.warning(
+                            f"SECURITY ALERT: Using insecure scheme ({scheme}://) "
+                            "with INTENT_SKIP_TLS_VERIFY=true. This is not recommended for production!"
+                        )
         except Exception as e:
             # Catch potential parsing errors too
             raise ValueError(f"Invalid gateway URL '{url}': {e}")
@@ -425,8 +433,11 @@ class GatewayClient:
         
         # Parse URL to extract host, port, and scheme
         parsed = urllib.parse.urlparse(url)
-        host = parsed.hostname
+        host = parsed.hostname or ""
         scheme = parsed.scheme.lower()
+        
+        # Check if this is a local development host
+        is_local = host in ("localhost", "127.0.0.1", "::1")
         
         # Determine port and security based on scheme
         if scheme in ('https', 'grpcs'):
@@ -466,80 +477,74 @@ class GatewayClient:
             ('grpc.max_receive_message_length', 10 * 1024 * 1024),  # 10 MB
         ]
         
+        # Determine if we should use an insecure channel
+        # Use insecure channel if:
+        # 1. Not a secure scheme (http, grpc, intent+grpc), OR
+        # 2. verify_ssl=False is specified, OR
+        # 3. INTENT_SKIP_TLS_VERIFY="true" or INTENT_INSECURE_GW="1" is set
+        should_use_insecure = (
+            not secure or 
+            not verify_ssl or 
+            skip_tls_verify or 
+            legacy_insecure
+        )
+        
+        # For local development hosts, prefer insecure channel when using http/grpc schemes
+        if is_local and not secure:
+            should_use_insecure = True
+        
         # Handle different channel types based on scheme and security settings
-        if not secure:
-            # Plaintext channel for http/grpc schemes
+        if should_use_insecure:
+            # Plaintext channel
             logger.warning(
                 f"SECURITY ALERT: Creating insecure gRPC channel to {target}. "
                 "This is not recommended for production environments!"
             )
             return _grpc_runtime.insecure_channel(target, options=options)
-        elif verify_ssl and not (skip_tls_verify or legacy_insecure):
-            # Fully verified TLS for secure schemes
-            creds = None  # Initialize creds
-            
-            if ca_path:
-                try:
-                    with open(ca_path, 'rb') as f:
-                        ca_data = f.read()
+        elif ca_path:
+            # Custom CA certificate provided
+            try:
+                with open(ca_path, 'rb') as f:
+                    ca_data = f.read()
 
-                    if append_ca:
-                        # Append custom CA to system roots
-                        try:
-                            import certifi
-                            system_ca_path = certifi.where()
-                            with open(system_ca_path, 'rb') as f:
-                                system_ca_data = f.read()
-                            # Cache the combined CA data to avoid memory issues with repeated calls
-                            # Use a class attribute for caching
-                            if not hasattr(GatewayClient, '_combined_ca_cache'):
-                                GatewayClient._combined_ca_cache = {}
-                            cache_key = f"{system_ca_path}:{ca_path}"
-                            if cache_key not in GatewayClient._combined_ca_cache:
-                                GatewayClient._combined_ca_cache[cache_key] = system_ca_data + b'\n' + ca_data
-                            combined_ca = GatewayClient._combined_ca_cache[cache_key]
-                            creds = _grpc_runtime.ssl_channel_credentials(root_certificates=combined_ca)
-                            logger.info(f"Using custom CA certificate from {ca_path} appended to system roots")
-                        except ImportError:
-                            logger.warning("certifi not installed, cannot append custom CA to system roots. Using only custom CA.")
-                            creds = _grpc_runtime.ssl_channel_credentials(root_certificates=ca_data)
-                        except Exception as e_append:
-                            logger.warning(f"Failed to load or append system CA: {e_append}. Using only custom CA.")
-                            creds = _grpc_runtime.ssl_channel_credentials(root_certificates=ca_data)
-                    else:
-                        # Use only the provided CA cert, replacing system roots (default, more secure)
+                if append_ca:
+                    # Append custom CA to system roots
+                    try:
+                        import certifi
+                        system_ca_path = certifi.where()
+                        with open(system_ca_path, 'rb') as f:
+                            system_ca_data = f.read()
+                        # Cache the combined CA data to avoid memory issues with repeated calls
+                        # Use a class attribute for caching
+                        if not hasattr(GatewayClient, '_combined_ca_cache'):
+                            GatewayClient._combined_ca_cache = {}
+                        cache_key = f"{system_ca_path}:{ca_path}"
+                        if cache_key not in GatewayClient._combined_ca_cache:
+                            GatewayClient._combined_ca_cache[cache_key] = system_ca_data + b'\n' + ca_data
+                        combined_ca = GatewayClient._combined_ca_cache[cache_key]
+                        creds = _grpc_runtime.ssl_channel_credentials(root_certificates=combined_ca)
+                        logger.info(f"Using custom CA certificate from {ca_path} appended to system roots")
+                    except ImportError:
+                        logger.warning("certifi not installed, cannot append custom CA to system roots. Using only custom CA.")
                         creds = _grpc_runtime.ssl_channel_credentials(root_certificates=ca_data)
-                        logger.info(f"Using custom CA certificate from {ca_path} (replacing system roots)")
-                except Exception as e_load:
-                    logger.warning(f"Failed to load custom CA certificate from {ca_path}: {e_load}")
-                    if strict_ca:
-                        raise ValueError(f"Failed to load custom CA certificate from {ca_path}: {e_load}")
-                    # Fallback to default credentials if not strict
-                    creds = _grpc_runtime.ssl_channel_credentials()
-            else:
-                # Standard SSL credentials with system roots if no custom CA path
+                    except Exception as e_append:
+                        logger.warning(f"Failed to load or append system CA: {e_append}. Using only custom CA.")
+                        creds = _grpc_runtime.ssl_channel_credentials(root_certificates=ca_data)
+                else:
+                    # Use only the provided CA cert, replacing system roots (default, more secure)
+                    creds = _grpc_runtime.ssl_channel_credentials(root_certificates=ca_data)
+                    logger.info(f"Using custom CA certificate from {ca_path} (replacing system roots)")
+            except Exception as e_load:
+                logger.warning(f"Failed to load custom CA certificate from {ca_path}: {e_load}")
+                if strict_ca:
+                    raise ValueError(f"Failed to load custom CA certificate from {ca_path}: {e_load}")
+                # Fallback to default credentials if not strict
                 creds = _grpc_runtime.ssl_channel_credentials()
                 
             return _grpc_runtime.secure_channel(target, creds, options=options)
         else:
-            # Encrypted but not verified TLS (for dev environments)
-            logger.warning(
-                "SECURITY ALERT: Creating TLS channel without certificate validation. "
-                "Traffic remains encrypted, but hostname/authenticity is not validated. "
-                "This is not recommended for production environments!"
-            )
-            # Create channel with encryption but no certificate validation
-            # Pass None for root_certificates to accept any certificate (even self-signed)
-            creds = _grpc_runtime.ssl_channel_credentials(root_certificates=None)
-            options.append(("grpc.ssl_target_name_override", host))
-            
-            # Add a warning for non-standard ports with ssl_target_name_override
-            if port not in (443, 80):
-                logger.warning(
-                    f"Using ssl_target_name_override with non-standard port ({port}). "
-                    f"Ensure server certificate's CN matches '{host}' (not '{host}:{port}')."
-                )
-                
+            # Standard SSL credentials with system roots
+            creds = _grpc_runtime.ssl_channel_credentials()
             return _grpc_runtime.secure_channel(target, creds, options=options)
 
 
