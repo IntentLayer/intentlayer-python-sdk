@@ -3,6 +3,8 @@ Gateway client implementation for the IntentLayer SDK.
 
 This module provides a gRPC client for interacting with the IntentLayer Gateway service.
 """
+
+__all__ = ['GatewayClient', 'DidDocument', 'TxReceipt']
 import os
 import time
 import random
@@ -14,7 +16,12 @@ from datetime import datetime, timedelta
 import threading
 
 # Import JWT for API key parsing
-import jwt
+# import jwt
+
+# Module-level constants for authentication
+AUTH_HEADER = "authorization"
+KEY_PREFIX = "Key "
+BEARER_PREFIX = "Bearer "
 
 # Import TTLCache for rate limiting
 try:
@@ -30,6 +37,9 @@ try:
     from google.protobuf import timestamp_pb2
     from google.protobuf import wrappers_pb2
     
+    # Define PROTO_AVAILABLE flag before imports to avoid shadows
+    PROTO_AVAILABLE = False  # Default to false
+    
     # Try to import the generated proto classes
     try:
         from .proto import (
@@ -39,11 +49,12 @@ try:
             RegisterDidRequest,
             RegisterDidResponse,
             GatewayServiceStub,
-            PROTO_AVAILABLE
         )
+        # If we got here, imports succeeded, so set flag to True
+        PROTO_AVAILABLE = True
     except ImportError:
-        # If proto imports fail, set PROTO_AVAILABLE to False
-        PROTO_AVAILABLE = False
+        # If proto imports fail, PROTO_AVAILABLE remains False
+        pass
     
     # If we get here, grpc is available
     GRPC_AVAILABLE = True
@@ -79,6 +90,8 @@ from .exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+# Prevent double emission when caller sets up logging
+logger.propagate = False
 
 # Rate limiting for error logs is handled by the shared implementation in _rate_limited_log.py
 
@@ -365,13 +378,13 @@ class GatewayClient:
             # Treat localhost/loopback as local development 
             is_local = host in ("localhost", "127.0.0.1", "::1")
             
-            # Check for secure schemes (https, grpcs) vs insecure schemes (http, grpc)
+            # Check for secure schemes (https, grpcs) vs insecure schemes (http, grpc, intent+grpc)
             is_secure_scheme = scheme in ("https", "grpcs")
-            is_insecure_scheme = scheme in ("http", "grpc")
+            is_insecure_scheme = scheme in ("http", "grpc", "intent+grpc")
             
             if not (is_secure_scheme or is_insecure_scheme):
                 raise ValueError(
-                    f"Gateway URL scheme must be one of: https, http, grpcs, grpc (got: {scheme})"
+                    f"Gateway URL scheme must be one of: https, http, grpcs, grpc, intent+grpc (got: {scheme})"
                 )
                 
             # For non-secure schemes, warn unless explicitly allowed or it's local
@@ -419,6 +432,10 @@ class GatewayClient:
         if scheme in ('https', 'grpcs'):
             default_port = 443
             secure = True
+        elif scheme == 'intent+grpc':
+            # Default for Kubernetes service DNS is 9090
+            default_port = 9090 
+            secure = False
         else:  # http or grpc
             default_port = 80
             secure = False
@@ -508,11 +525,21 @@ class GatewayClient:
             # Encrypted but not verified TLS (for dev environments)
             logger.warning(
                 "SECURITY ALERT: Creating TLS channel without certificate validation. "
+                "Traffic remains encrypted, but hostname/authenticity is not validated. "
                 "This is not recommended for production environments!"
             )
             # Create channel with encryption but no certificate validation
-            creds = _grpc_runtime.ssl_channel_credentials()  # No root certificates specified = no host verification
+            # Pass None for root_certificates to accept any certificate (even self-signed)
+            creds = _grpc_runtime.ssl_channel_credentials(root_certificates=None)
             options.append(("grpc.ssl_target_name_override", host))
+            
+            # Add a warning for non-standard ports with ssl_target_name_override
+            if port not in (443, 80):
+                logger.warning(
+                    f"Using ssl_target_name_override with non-standard port ({port}). "
+                    f"Ensure server certificate's CN matches '{host}' (not '{host}:{port}')."
+                )
+                
             return _grpc_runtime.secure_channel(target, creds, options=options)
 
 
@@ -613,11 +640,11 @@ class GatewayClient:
         
         # Prefer API key authentication (primary method)
         if self.api_key:
-            metadata.append(('authorization', f'Key {self.api_key}'))
+            metadata.append((AUTH_HEADER, f"{KEY_PREFIX}{self.api_key}"))
             logger.debug("Using API key authentication")
         # Fall back to bearer token if provided (deprecated)
         elif self.bearer_token:
-            metadata.append(('authorization', f'Bearer {self.bearer_token}'))
+            metadata.append((AUTH_HEADER, f"{BEARER_PREFIX}{self.bearer_token}"))
             logger.warning(
                 "Using deprecated JWT bearer token authentication. "
                 "API keys are the preferred authentication method."
